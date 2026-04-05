@@ -1,0 +1,56 @@
+{
+  "name": "morexapp",
+  "version": "0.1.0",
+  "description": "Unified web, desktop, and mobile app for training, nutrition, groceries, and weekly planning.",
+  "main": "out/main/main.js",
+  "author": "OpenAI Codex",
+  "license": "MIT",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "tsc && electron-vite build",
+    "preview": "electron-vite preview",
+    "lint": "tsc --noEmit",
+    "web:dev": "vite --config vite.web.config.ts",
+    "web:dev:network": "vite --config vite.web.config.ts --host 0.0.0.0 --port 5173 --strictPort",
+    "web:build": "vite build --config vite.web.config.ts",
+    "web:preview": "vite preview --config vite.web.config.ts",
+    "mobile:build": "npm run web:build",
+    "mobile:sync": "npx cap sync",
+    "mobile:sync:ios": "npx cap sync ios",
+    "mobile:open:ios": "npx cap open ios"
+  },
+  "dependencies": {
+    "@capacitor/core": "^7.4.3",
+    "dayjs": "^1.11.13",
+    "lucide-react": "^0.511.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^7.4.3",
+    "@capacitor/ios": "^7.4.3",
+    "@tailwindcss/vite": "^4.1.5",
+    "@types/node": "^22.10.2",
+    "@types/react": "^18.3.17",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^34.0.0",
+    "electron-builder": "^26.8.1",
+    "electron-vite": "^3.1.0",
+    "tailwindcss": "^4.1.5",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5"
+  },
+  "build": {
+    "appId": "com.morexapp.desktop",
+    "productName": "MoreXApp",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**",
+      "out/**",
+      "package.json"
+    ]
+  }
+}

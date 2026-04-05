@@ -1,0 +1,6 @@
+node_modules
+dist
+out
+release
+electron-dev.log
+web-dev.log

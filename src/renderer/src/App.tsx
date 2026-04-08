@@ -28,6 +28,7 @@ import { SectionCard } from "@/components/SectionCard";
 import { StatCard } from "@/components/StatCard";
 import { StoreComparisonCard } from "@/components/StoreComparisonCard";
 import { TotalCostCard } from "@/components/TotalCostCard";
+import { VerseOfTheDayCard } from "@/components/VerseOfTheDayCard";
 import { WorkoutCard } from "@/components/WorkoutCard";
 import {
   createInitialUserData,
@@ -59,6 +60,7 @@ import { getErrorMessage } from "@/lib/errorMessages";
 import { formatExerciseSearch, getExerciseMap, getMuscleOptions, groupExerciseResults, searchExercises } from "@/lib/exerciseSearch";
 import { formatMacro, parseMacroString, parseNumber } from "@/lib/macroEstimator";
 import { nutritionService, type NutritionEntry } from "@/lib/nutritionService";
+import { getDailyVerse, type DailyVerse } from "@/lib/dailyVerse";
 import { hasSupabaseConfig } from "@/lib/supabase";
 import type { GroceryList, GroceryListItem, GroceryUnit, PriceRecord } from "@/lib/groceryTypes";
 import type { MobileTab } from "@/components/BottomNav";
@@ -273,6 +275,8 @@ function App() {
   const [showStoreComparison, setShowStoreComparison] = useState(false);
   const [promoCodes, setPromoCodes] = useState<PromoCodeRecord[]>([]);
   const [promoCodeInput, setPromoCodeInput] = useState("");
+  const [dailyVerse, setDailyVerse] = useState<DailyVerse | null>(null);
+  const [dailyVerseLoading, setDailyVerseLoading] = useState(true);
   const photoInputRef = useRef<HTMLInputElement | null>(null);
   const hasLoadedRemoteData = useRef(false);
 
@@ -285,6 +289,32 @@ function App() {
     setAuthInfo(null);
     return false;
   }
+
+  useEffect(() => {
+    let cancelled = false;
+
+    setDailyVerseLoading(true);
+    void getDailyVerse(todayKey())
+      .then((verse) => {
+        if (!cancelled) {
+          setDailyVerse(verse);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setDailyVerse(null);
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setDailyVerseLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -1260,6 +1290,7 @@ function App() {
     if (activeTab === "home") {
       return (
         <div className="space-y-5">
+          <VerseOfTheDayCard verse={dailyVerse} isLoading={dailyVerseLoading} />
           <SectionCard eyebrow="Stats" title="This week">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <StatCard

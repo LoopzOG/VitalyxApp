@@ -65,7 +65,7 @@ export function AddItemForm({ onAdd, onBarcodeLookup, isPremiumSubscriber, onUpg
       <div className="mb-4">
         <p className="text-sm font-medium text-white">Add grocery item</p>
         <p className="mt-1 text-sm text-zinc-400">
-          Add by food name or barcode so MoreX can track pricing across stores. Manual barcode entry stays free, while UPC camera scanning is premium.
+          Add by food name or barcode so Vitalyx can track pricing across stores. Manual barcode entry stays free, while UPC camera scanning is premium.
         </p>
       </div>
 

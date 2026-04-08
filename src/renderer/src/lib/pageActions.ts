@@ -23,7 +23,7 @@ export type PageActionDetail = {
   action: PageAction;
 };
 
-const PAGE_ACTION_EVENT = "morex:page-action";
+const PAGE_ACTION_EVENT = "vitalyx:page-action";
 
 export function dispatchPageAction(detail: PageActionDetail) {
   window.dispatchEvent(new CustomEvent<PageActionDetail>(PAGE_ACTION_EVENT, { detail }));

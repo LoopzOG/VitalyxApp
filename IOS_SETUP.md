@@ -1,4 +1,4 @@
-# MoreXApp iOS setup
+# Vitalyx iOS setup
 
 This project now uses Capacitor so the shared React web app can be packaged as an iOS app.
 

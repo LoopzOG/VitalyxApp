@@ -26,7 +26,7 @@ export function MobileAppShell({
 }: MobileAppShellProps) {
   return (
     <div className="app-surface min-h-screen bg-transparent text-zinc-50">
-      <div className="mx-auto min-h-screen max-w-md">
+      <div className="mobile-frame mx-auto min-h-screen w-full">
         <Header
           title={title}
           subtitle={subtitle}
@@ -35,7 +35,7 @@ export function MobileAppShell({
           user={user}
         />
 
-        <main className="px-4 pb-28 pt-5">
+        <main className="px-4 pb-[calc(7rem+env(safe-area-inset-bottom,0px))] pt-5">
           <div key={activeTab} className="page-flow">
             {children}
           </div>

@@ -3,8 +3,8 @@ import type { CapacitorConfig } from "@capacitor/cli";
 const liveReloadUrl = process.env.CAP_SERVER_URL;
 
 const config: CapacitorConfig = {
-  appId: "com.morexapp.mobile",
-  appName: "MoreXApp",
+  appId: "com.vitalyx.mobile",
+  appName: "Vitalyx",
   webDir: "dist",
   bundledWebRuntime: false,
   server: {

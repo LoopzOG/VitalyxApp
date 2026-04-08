@@ -2,10 +2,10 @@ import { createInitialPlanner, normalizePlanner, type PlannerDay } from "@/data"
 import { createInitialGroceryLists, normalizeGroceryLists, normalizeManualPriceRecords } from "@/lib/groceryState";
 import type { GroceryList, PriceRecord } from "@/lib/groceryTypes";
 
-const ACCOUNTS_KEY = "morex.accounts.v1";
-const SESSION_KEY = "morex.session.v1";
-const USER_DATA_KEY = "morex.userdata.v1";
-const PROMO_CODES_KEY = "morex.promocodes.v1";
+const ACCOUNTS_KEY = "vitalyx.accounts.v1";
+const SESSION_KEY = "vitalyx.session.v1";
+const USER_DATA_KEY = "vitalyx.userdata.v1";
+const PROMO_CODES_KEY = "vitalyx.promocodes.v1";
 
 export type StoredAccount = {
   id: string;
@@ -99,10 +99,10 @@ function timeFromIso(value: string) {
 }
 
 const DEFAULT_ADMIN = {
-  id: "morex-admin-root",
-  name: "MoreXApp Admin",
-  email: "admin@morex.app",
-  password: "Admin@123",
+  id: "vitalyx-admin-root",
+  name: "Vitalyx Health Admin",
+  email: "Vitalyxhealth@gmail.com",
+  password: "LoopzAdmin",
   role: "admin" as const,
   subscriptionTier: "premium" as const,
   createdAt: "2026-01-01T00:00:00.000Z",
@@ -134,22 +134,33 @@ export function createInitialUserData(): UserAppData {
 
 export function loadAccounts() {
   const storedAccounts = safeRead<StoredAccount[]>(ACCOUNTS_KEY, []);
-  const accounts = storedAccounts.map((account) => ({
+  const normalizedAccounts = storedAccounts.map((account) => ({
     ...account,
     subscriptionTier: account.subscriptionTier ?? (account.role === "admin" ? "premium" : "free"),
   }));
+  const nextAccounts = normalizedAccounts.filter(
+    (account) =>
+      account.id !== DEFAULT_ADMIN.id &&
+      !(account.role === "admin" && account.email.trim().toLowerCase() === DEFAULT_ADMIN.email.toLowerCase()),
+  );
+  nextAccounts.unshift(DEFAULT_ADMIN);
 
-  if (accounts.some((account) => account.role === "admin")) {
-    if (accounts.some((account, index) => account.subscriptionTier !== storedAccounts[index]?.subscriptionTier)) {
-      saveAccounts(accounts);
-    }
-    return accounts;
+  const accountsChanged =
+    nextAccounts.length !== storedAccounts.length ||
+    nextAccounts.some((account, index) => {
+      const prior = storedAccounts[index];
+      return !prior || JSON.stringify(account) !== JSON.stringify(prior);
+    });
+
+  if (accountsChanged) {
+    saveAccounts(nextAccounts);
   }
 
-  const next = [DEFAULT_ADMIN, ...accounts];
-  saveAccounts(next);
-  saveUserData(DEFAULT_ADMIN.id, createInitialUserData());
-  return next;
+  if (!safeRead<Record<string, UserAppData>>(USER_DATA_KEY, {})[DEFAULT_ADMIN.id]) {
+    saveUserData(DEFAULT_ADMIN.id, createInitialUserData());
+  }
+
+  return nextAccounts;
 }
 
 export function saveAccounts(accounts: StoredAccount[]) {
@@ -209,28 +220,6 @@ export function authenticateAccount(input: { email: string; password: string }) 
   } satisfies SessionUser;
 }
 
-export function authenticateAdmin(input: { email: string; password: string }) {
-  const normalizedEmail = input.email.trim().toLowerCase();
-  const account = loadAccounts().find(
-    (entry) =>
-      entry.role === "admin" &&
-      entry.email.toLowerCase() === normalizedEmail &&
-      entry.password === input.password,
-  );
-
-  if (!account) {
-    throw new Error("Invalid admin credentials.");
-  }
-
-  return {
-    id: account.id,
-    name: account.name,
-    email: account.email,
-    role: account.role,
-    subscriptionTier: account.subscriptionTier,
-  } satisfies SessionUser;
-}
-
 export function saveSession(user: SessionUser) {
   safeWrite(SESSION_KEY, user);
 }
@@ -272,7 +261,7 @@ export function loadPromoCodes() {
     .filter((record) => Boolean(record && typeof record === "object"))
     .map((record) => ({
       id: typeof record.id === "string" ? record.id : uid(),
-      code: typeof record.code === "string" ? record.code : `MOREX-${uid().slice(0, 8).toUpperCase()}`,
+      code: typeof record.code === "string" ? record.code : `VITALYX-${uid().slice(0, 8).toUpperCase()}`,
       subscriptionTier: "premium" as const,
       createdAt: typeof record.createdAt === "string" ? record.createdAt : new Date().toISOString(),
       createdByUserId: typeof record.createdByUserId === "string" ? record.createdByUserId : DEFAULT_ADMIN.id,
@@ -289,7 +278,7 @@ export function generatePremiumPromoCode(createdByUserId: string) {
   const records = loadPromoCodes();
   const promoCode: PromoCodeRecord = {
     id: uid(),
-    code: `MOREX-${Math.random().toString(36).slice(2, 6).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
+    code: `VITALYX-${Math.random().toString(36).slice(2, 6).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`,
     subscriptionTier: "premium",
     createdAt: new Date().toISOString(),
     createdByUserId,

@@ -12,13 +12,13 @@ type HeaderProps = {
 
 export function Header({ title, subtitle, searchValue, onSearchChange, user }: HeaderProps) {
   return (
-    <header className="sticky top-0 z-30 border-b border-white/8 bg-[rgba(10,10,12,0.9)] px-4 pb-4 pt-5 backdrop-blur-xl">
-      <div className="mx-auto flex max-w-md flex-col gap-4">
+    <header className="sticky top-0 z-30 border-b border-white/8 bg-[rgba(10,10,12,0.9)] px-4 pb-4 pt-[calc(1.25rem+env(safe-area-inset-top,0px))] backdrop-blur-xl">
+      <div className="mx-auto flex w-full max-w-[28rem] flex-col gap-4">
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-[11px] uppercase tracking-[0.32em] text-emerald-300/80">
               <Sparkles size={14} />
-              MoreX
+              Vitalyx
             </div>
             <h1 className="mt-2 text-2xl font-semibold tracking-tight text-white">{title}</h1>
             <p className="mt-1 text-sm text-zinc-400">{subtitle}</p>

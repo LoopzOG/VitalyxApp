@@ -70,6 +70,17 @@ export type WorkoutExercise = {
   pr?: string;
 };
 
+export type ExerciseCatalogItem = {
+  name: string;
+  aliases: string[];
+  focus: string;
+  primaryMuscles: string[];
+  equipment: string;
+  defaultSets: string;
+  defaultReps: string;
+  source: string;
+};
+
 export type BudgetRow = {
   item: string;
   category: string;
@@ -151,7 +162,7 @@ export const weeklyPlanner: WeeklyMealColumn[] = [
 ];
 
 export function buildPlannerNote(day: string) {
-  return `Add your own foods for ${day} and MoreX will keep the daily totals updated as you go.`;
+  return `Add your own foods for ${day} and Vitalyx will keep the daily totals updated as you go.`;
 }
 
 export function createInitialPlanner(): PlannerDay[] {
@@ -325,6 +336,209 @@ export const workoutExercises: WorkoutExercise[] = [
   { name: "Cable Fly", sets: "3", reps: "12-15", weight: "35 lb" },
   { name: "Seated Shoulder Press", sets: "3", reps: "8-10", weight: "70 lb" },
   { name: "Rope Pushdown", sets: "3", reps: "12-15", weight: "55 lb" },
+];
+
+export const exerciseCatalog: ExerciseCatalogItem[] = [
+  {
+    name: "Squat",
+    aliases: ["bodyweight squat", "squat exercise", "squat"],
+    focus: "Lower body strength",
+    primaryMuscles: ["Quadriceps", "Hamstrings", "Glutes"],
+    equipment: "Body weight",
+    defaultSets: "1",
+    defaultReps: "12",
+    source: "Mayo Clinic strength-training videos",
+  },
+  {
+    name: "Lunge",
+    aliases: ["stationary lunge", "traveling lunge", "lunge exercise", "lunge"],
+    focus: "Single-leg lower body work",
+    primaryMuscles: ["Quadriceps", "Hamstrings", "Glutes"],
+    equipment: "Body weight",
+    defaultSets: "1",
+    defaultReps: "12",
+    source: "Mayo Clinic strength-training videos",
+  },
+  {
+    name: "Modified Pushup",
+    aliases: ["modified pushup", "pushup", "push-up"],
+    focus: "Upper-body pressing",
+    primaryMuscles: ["Chest", "Shoulders", "Triceps"],
+    equipment: "Body weight",
+    defaultSets: "1",
+    defaultReps: "12",
+    source: "Mayo Clinic strength-training videos",
+  },
+  {
+    name: "Step-Up",
+    aliases: ["step-up exercise", "step up", "step-up"],
+    focus: "Leg drive and balance",
+    primaryMuscles: ["Quadriceps", "Glutes", "Hamstrings"],
+    equipment: "Bench or box",
+    defaultSets: "1",
+    defaultReps: "12",
+    source: "Mayo Clinic strength-training videos",
+  },
+  {
+    name: "Bent-Over Row",
+    aliases: ["bent-over row", "bent over row", "row"],
+    focus: "Upper-back pulling",
+    primaryMuscles: ["Lats", "Rhomboids", "Biceps"],
+    equipment: "Resistance band or dumbbell",
+    defaultSets: "1",
+    defaultReps: "12",
+    source: "Mayo Clinic strength-training videos",
+  },
+  {
+    name: "Biceps Curl",
+    aliases: ["biceps curl", "curl"],
+    focus: "Arm flexion",
+    primaryMuscles: ["Biceps", "Forearms"],
+    equipment: "Resistance band, dumbbell, barbell, or machine",
+    defaultSets: "1",
+    defaultReps: "12",
+    source: "Mayo Clinic strength-training videos",
+  },
+  {
+    name: "Hamstring Curl",
+    aliases: ["hamstring curl", "leg curl"],
+    focus: "Posterior-chain accessory work",
+    primaryMuscles: ["Hamstrings"],
+    equipment: "Resistance band or machine",
+    defaultSets: "1",
+    defaultReps: "12",
+    source: "Mayo Clinic strength-training videos",
+  },
+  {
+    name: "Hip Abduction Walk",
+    aliases: ["hip abduction walk", "band walk", "lateral walk"],
+    focus: "Hip stability",
+    primaryMuscles: ["Glute medius", "Glutes"],
+    equipment: "Resistance band",
+    defaultSets: "1",
+    defaultReps: "12",
+    source: "Mayo Clinic strength-training videos",
+  },
+  {
+    name: "Standing Hip Abduction",
+    aliases: ["standing hip abduction", "hip abduction"],
+    focus: "Hip and glute control",
+    primaryMuscles: ["Glutes", "Hip stabilizers"],
+    equipment: "Resistance band",
+    defaultSets: "1",
+    defaultReps: "12",
+    source: "Mayo Clinic strength-training videos",
+  },
+  {
+    name: "Chest Press",
+    aliases: ["chest press", "dumbbell chest press", "machine chest press"],
+    focus: "Horizontal press",
+    primaryMuscles: ["Chest", "Shoulders", "Triceps"],
+    equipment: "Dumbbell or machine",
+    defaultSets: "1",
+    defaultReps: "12",
+    source: "Mayo Clinic strength-training videos",
+  },
+  {
+    name: "Reverse Fly",
+    aliases: ["reverse fly", "rear delt fly"],
+    focus: "Upper-back and rear shoulder work",
+    primaryMuscles: ["Rear delts", "Upper back"],
+    equipment: "Dumbbell",
+    defaultSets: "1",
+    defaultReps: "12",
+    source: "Mayo Clinic strength-training videos",
+  },
+  {
+    name: "Calf Raise",
+    aliases: ["calf raise", "standing calf raise"],
+    focus: "Lower-leg strength",
+    primaryMuscles: ["Calves"],
+    equipment: "Dumbbell or body weight",
+    defaultSets: "1",
+    defaultReps: "12",
+    source: "Mayo Clinic strength-training videos",
+  },
+  {
+    name: "Triceps Extension",
+    aliases: ["triceps extension", "overhead triceps extension"],
+    focus: "Arm extension",
+    primaryMuscles: ["Triceps"],
+    equipment: "Dumbbell or machine",
+    defaultSets: "1",
+    defaultReps: "12",
+    source: "Mayo Clinic strength-training videos",
+  },
+  {
+    name: "Lat Pull-Down",
+    aliases: ["lat pull-down", "lat pulldown", "pulldown"],
+    focus: "Vertical pulling",
+    primaryMuscles: ["Lats", "Upper back", "Biceps"],
+    equipment: "Machine",
+    defaultSets: "1",
+    defaultReps: "12",
+    source: "Mayo Clinic strength-training videos",
+  },
+  {
+    name: "Seated Row",
+    aliases: ["seated row", "machine row"],
+    focus: "Back thickness",
+    primaryMuscles: ["Lats", "Rhomboids", "Biceps"],
+    equipment: "Machine",
+    defaultSets: "1",
+    defaultReps: "12",
+    source: "Mayo Clinic strength-training videos",
+  },
+  {
+    name: "Knee Extension",
+    aliases: ["knee extension", "leg extension"],
+    focus: "Quad isolation",
+    primaryMuscles: ["Quadriceps"],
+    equipment: "Machine",
+    defaultSets: "1",
+    defaultReps: "12",
+    source: "Mayo Clinic strength-training videos",
+  },
+  {
+    name: "Seated Leg Press",
+    aliases: ["seated leg press", "leg press"],
+    focus: "Compound leg press",
+    primaryMuscles: ["Quadriceps", "Glutes", "Hamstrings"],
+    equipment: "Machine",
+    defaultSets: "1",
+    defaultReps: "12",
+    source: "Mayo Clinic strength-training videos",
+  },
+  {
+    name: "Abdominal Crunch",
+    aliases: ["abdominal crunch", "crunch"],
+    focus: "Core flexion",
+    primaryMuscles: ["Abs"],
+    equipment: "Body weight",
+    defaultSets: "1",
+    defaultReps: "12",
+    source: "Mayo Clinic core-strength guidance",
+  },
+  {
+    name: "Bridge",
+    aliases: ["bridge", "glute bridge"],
+    focus: "Core and glute stability",
+    primaryMuscles: ["Glutes", "Hamstrings", "Core"],
+    equipment: "Body weight",
+    defaultSets: "1",
+    defaultReps: "12",
+    source: "Mayo Clinic core-strength guidance",
+  },
+  {
+    name: "Modified Plank",
+    aliases: ["modified plank", "plank"],
+    focus: "Core stability",
+    primaryMuscles: ["Core", "Shoulders"],
+    equipment: "Body weight",
+    defaultSets: "1",
+    defaultReps: "12",
+    source: "Mayo Clinic core-strength guidance",
+  },
 ];
 
 export const progressKpis = [

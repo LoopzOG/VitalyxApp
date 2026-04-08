@@ -1,5 +1,5 @@
 {
-  "name": "morexapp",
+  "name": "vitalyx",
   "version": "0.1.0",
   "description": "Unified web, desktop, and mobile app for training, nutrition, groceries, and weekly planning.",
   "main": "out/main/main.js",
@@ -42,8 +42,8 @@
     "vite": "^6.0.5"
   },
   "build": {
-    "appId": "com.morexapp.desktop",
-    "productName": "MoreXApp",
+    "appId": "com.vitalyx.desktop",
+    "productName": "Vitalyx",
     "directories": {
       "output": "release"
     },

@@ -253,7 +253,7 @@ export class GroceryPriceService {
         category: matchedMockProduct.category,
         suggestedUnit: "piece" as const,
         matchedProductId: matchedMockProduct.id,
-        sourceLabel: "MoreX mock catalog",
+        sourceLabel: "Vitalyx mock catalog",
       };
     }
 

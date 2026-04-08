@@ -38,11 +38,11 @@ export function Sidebar({ activePage, onNavigate, user, onSignOut }: SidebarProp
       <aside className="hidden w-72 shrink-0 border-r border-white/8 bg-black/20 xl:flex xl:flex-col">
         <div className="border-b border-white/8 p-6">
           <div className="flex items-center gap-3">
-            <div className="flex h-14 w-14 items-center justify-center rounded-[20px] border border-emerald-300/15 bg-emerald-400/10 shadow-[0_0_32px_rgba(52,211,153,0.12)]">
-              <LogoMark className="h-9 w-9" />
+            <div className="flex items-center justify-center rounded-[20px] border border-emerald-300/15 bg-black/25 px-3 py-2 shadow-[0_0_32px_rgba(52,211,153,0.12)]">
+              <LogoMark className="h-auto w-24" />
             </div>
             <div>
-              <p className="text-xs uppercase tracking-[0.28em] text-emerald-300/80">MoreXApp</p>
+              <p className="text-xs uppercase tracking-[0.28em] text-emerald-300/80">Vitalyx</p>
               <h1 className="mt-1 text-lg font-semibold text-white">Meals & Training OS</h1>
             </div>
           </div>

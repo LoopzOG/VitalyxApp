@@ -1,6 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { Apple, Dumbbell, Footprints, Goal, Repeat, RotateCcw, Settings2, Wallet } from "lucide-react";
-import { createInitialPlanner, fitnessSettings, nutritionSettings, profileSettings, progressKpis, workoutSplit, type PlannerMeal } from "@/data";
+import {
+  createInitialPlanner,
+  exerciseCatalog,
+  fitnessSettings,
+  nutritionSettings,
+  profileSettings,
+  progressKpis,
+  workoutSplit,
+  type ExerciseCatalogItem,
+  type PlannerMeal,
+} from "@/data";
 import { AddItemForm } from "@/components/AddItemForm";
 import { AuthScreen } from "@/components/AuthScreen";
 import { GroceryDashboardWidget } from "@/components/GroceryDashboardWidget";
@@ -25,7 +35,6 @@ import {
   loadPromoCodes,
   registerAccount,
   authenticateAccount,
-  authenticateAdmin,
   saveSession,
   saveUserData,
   generatePremiumPromoCode,
@@ -44,7 +53,7 @@ import { nutritionService, type NutritionEntry } from "@/lib/nutritionService";
 import type { GroceryList, GroceryListItem, GroceryUnit, PriceRecord } from "@/lib/groceryTypes";
 import type { MobileTab } from "@/components/BottomNav";
 const tabMeta: Record<MobileTab, { title: string; subtitle: string }> = {
-  home: { title: "MoreX", subtitle: "Blank by default, customizable every day." },
+  home: { title: "Vitalyx", subtitle: "Blank by default, customizable every day." },
   meals: { title: "Meals", subtitle: "Scan, search, or snap food and confirm the nutrition before saving." },
   track: { title: "Track", subtitle: "Keep workout logging simple and fast." },
   more: { title: "More", subtitle: "Track grocery prices, compare stores, and manage your setup." },
@@ -159,6 +168,33 @@ function abbreviateText(value: string, maxLength: number) {
   }
 
   return `${value.slice(0, Math.max(0, maxLength - 1)).trimEnd()}...`;
+}
+
+function normalizeExerciseValue(value: string) {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, " ");
+}
+
+function findExerciseCatalogItem(value: string) {
+  const normalizedValue = normalizeExerciseValue(value);
+  if (!normalizedValue) {
+    return null;
+  }
+
+  return (
+    exerciseCatalog.find((exercise) => {
+      const values = [exercise.name, ...exercise.aliases];
+      return values.some((option) => normalizeExerciseValue(option) === normalizedValue);
+    }) ?? null
+  );
+}
+
+function matchesExerciseCatalogItem(exercise: ExerciseCatalogItem, query: string) {
+  const normalizedQuery = normalizeExerciseValue(query);
+  if (!normalizedQuery) {
+    return true;
+  }
+
+  return [exercise.name, ...exercise.aliases].some((option) => normalizeExerciseValue(option).includes(normalizedQuery));
 }
 
 function calculateUsageStreak(usageDates: string[]) {
@@ -296,6 +332,9 @@ function App() {
       return { item: name, change: `${prefix}$${Math.abs(delta).toFixed(2)}` };
     })
     .filter((entry): entry is { item: string; change: string } => Boolean(entry));
+  const matchedExercise = findExerciseCatalogItem(exerciseName);
+  const exerciseSuggestions = exerciseCatalog.filter((exercise) => matchesExerciseCatalogItem(exercise, exerciseName)).slice(0, 6);
+  const quickExerciseSuggestions = exerciseCatalog.slice(0, 6);
 
   function updatePlanner(updater: (value: UserAppData["planner"]) => UserAppData["planner"]) {
     setAppData((current) => {
@@ -416,6 +455,25 @@ function App() {
     setFeedback(`${exercise} added with ${sets} set${sets === 1 ? "" : "s"} for ${selectedDay} at ${selectedTime}.`);
   }
 
+  function applyExerciseSuggestion(exercise: ExerciseCatalogItem) {
+    setExerciseName(exercise.name);
+    setLiftSets((current) => current || exercise.defaultSets);
+    setLiftReps((current) => current || exercise.defaultReps);
+    setFeedback(`${exercise.name} selected. Autofilled ${exercise.defaultSets} set and ${exercise.defaultReps} reps for ${exercise.focus.toLowerCase()}.`);
+  }
+
+  function handleExerciseNameChange(value: string) {
+    setExerciseName(value);
+
+    const matchedCatalogItem = findExerciseCatalogItem(value);
+    if (!matchedCatalogItem) {
+      return;
+    }
+
+    setLiftSets((current) => current || matchedCatalogItem.defaultSets);
+    setLiftReps((current) => current || matchedCatalogItem.defaultReps);
+  }
+
   function removeWorkoutEntry(entryId: string) {
     updateWorkoutLog((current) => current.filter((entry) => entry.id !== entryId));
     setFeedback("Workout entry removed.");
@@ -478,18 +536,6 @@ function App() {
       setAuthError(null);
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : "Unable to create account.");
-    }
-  }
-
-  function handleAdminSignIn(input: { email: string; password: string }) {
-    try {
-      const next = authenticateAdmin(input);
-      saveSession(next);
-      setUser(next);
-      setAppData(loadUserData(next.id));
-      setAuthError(null);
-    } catch (error) {
-      setAuthError(error instanceof Error ? error.message : "Unable to sign in as admin.");
     }
   }
 
@@ -799,9 +845,9 @@ function App() {
           </SectionCard>
           <SectionCard eyebrow="Macro snapshot" title="Today's totals">
             <div className="grid grid-cols-3 gap-3">
-              <div className="rounded-[22px] border border-white/8 bg-white/[0.04] p-4"><p className="text-xs uppercase tracking-[0.22em] text-zinc-500">Protein</p><p className="mt-2 text-xl font-semibold text-white">{Math.round(totals.protein)}g</p></div>
-              <div className="rounded-[22px] border border-white/8 bg-white/[0.04] p-4"><p className="text-xs uppercase tracking-[0.22em] text-zinc-500">Carbs</p><p className="mt-2 text-xl font-semibold text-white">{Math.round(totals.carbs)}g</p></div>
-              <div className="rounded-[22px] border border-white/8 bg-white/[0.04] p-4"><p className="text-xs uppercase tracking-[0.22em] text-zinc-500">Fat</p><p className="mt-2 text-xl font-semibold text-white">{Math.round(totals.fat)}g</p></div>
+              <div className="rounded-[22px] border border-white/8 bg-white/[0.04] p-4 text-center"><p className="text-xs uppercase tracking-[0.22em] text-zinc-500">Protein</p><p className="mt-2 text-xl font-semibold text-white">{Math.round(totals.protein)}g</p></div>
+              <div className="rounded-[22px] border border-white/8 bg-white/[0.04] p-4 text-center"><p className="text-xs uppercase tracking-[0.22em] text-zinc-500">Carbs</p><p className="mt-2 text-xl font-semibold text-white">{Math.round(totals.carbs)}g</p></div>
+              <div className="rounded-[22px] border border-white/8 bg-white/[0.04] p-4 text-center"><p className="text-xs uppercase tracking-[0.22em] text-zinc-500">Fat</p><p className="mt-2 text-xl font-semibold text-white">{Math.round(totals.fat)}g</p></div>
             </div>
           </SectionCard>
           <section className="grid grid-cols-2 gap-3">
@@ -947,10 +993,47 @@ function App() {
               <input
                 type="text"
                 value={exerciseName}
-                onChange={(event) => setExerciseName(event.target.value)}
+                onChange={(event) => handleExerciseNameChange(event.target.value)}
                 placeholder="Workout or exercise"
+                list="exercise-autofill-list"
                 className="rounded-[22px] border border-white/10 bg-white/[0.05] px-4 py-3 text-sm text-white outline-none placeholder:text-zinc-500"
               />
+              <datalist id="exercise-autofill-list">
+                {exerciseCatalog.map((exercise) => (
+                  <option key={exercise.name} value={exercise.name} />
+                ))}
+              </datalist>
+              {matchedExercise ? (
+                <div className="rounded-[22px] border border-white/10 bg-white/[0.04] p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-white">{matchedExercise.name}</p>
+                      <p className="mt-1 text-sm text-zinc-400">{matchedExercise.focus}</p>
+                    </div>
+                    <span className="rounded-full bg-emerald-400/15 px-3 py-1 text-xs font-medium uppercase tracking-[0.18em] text-emerald-300">
+                      {matchedExercise.equipment}
+                    </span>
+                  </div>
+                  <p className="mt-3 text-xs uppercase tracking-[0.18em] text-zinc-500">
+                    Targets {matchedExercise.primaryMuscles.join(", ")}
+                  </p>
+                  <p className="mt-2 text-sm text-zinc-400">
+                    Starter autofill: {matchedExercise.defaultSets} set x {matchedExercise.defaultReps} reps
+                  </p>
+                </div>
+              ) : null}
+              <div className="flex flex-wrap gap-2">
+                {(exerciseName.trim() ? exerciseSuggestions : quickExerciseSuggestions).map((exercise) => (
+                  <button
+                    key={exercise.name}
+                    type="button"
+                    onClick={() => applyExerciseSuggestion(exercise)}
+                    className="rounded-full border border-white/10 bg-black/20 px-3 py-2 text-xs font-medium text-zinc-200"
+                  >
+                    {exercise.name}
+                  </button>
+                ))}
+              </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <input
                   type="number"
@@ -980,6 +1063,9 @@ function App() {
                   className="rounded-[22px] border border-white/10 bg-white/[0.05] px-4 py-3 text-sm text-white outline-none placeholder:text-zinc-500"
                 />
               </div>
+              <p className="text-xs leading-6 text-zinc-500">
+                Exercise autofill suggestions are seeded from Mayo Clinic strength and core exercise guidance. Default set and rep values are starter suggestions for faster logging.
+              </p>
               <button
                 type="button"
                 onClick={addWorkoutEntry}
@@ -1267,7 +1353,7 @@ function App() {
                 <input
                   value={promoCodeInput}
                   onChange={(event) => setPromoCodeInput(event.target.value.toUpperCase())}
-                  placeholder="MOREX-ABCD-EFGH"
+                  placeholder="VITALYX-ABCD-EFGH"
                   className="flex-1 rounded-[18px] border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none placeholder:text-zinc-500"
                 />
                 <button
@@ -1344,8 +1430,8 @@ function App() {
     );
   }
 
-  if (!isReady) return <div className="flex min-h-screen items-center justify-center text-sm text-zinc-400">Loading MoreX...</div>;
-  if (!user || !appData) return <AuthScreen onSignIn={handleSignIn} onAdminSignIn={handleAdminSignIn} onRegister={handleRegister} errorMessage={authError} />;
+  if (!isReady) return <div className="flex min-h-screen items-center justify-center text-sm text-zinc-400">Loading Vitalyx...</div>;
+  if (!user || !appData) return <AuthScreen onSignIn={handleSignIn} onRegister={handleRegister} errorMessage={authError} />;
 
   const meta = tabMeta[activeTab];
   return (

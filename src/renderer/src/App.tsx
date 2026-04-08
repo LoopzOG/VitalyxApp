@@ -409,6 +409,7 @@ function App() {
   }, [user, appData]);
 
   const planner = appData?.planner ?? createInitialPlanner();
+  const normalizedPlanner = planner.length ? planner : createInitialPlanner();
   const groceryLists = appData?.groceryLists ?? createInitialGroceryLists();
   const manualPriceRecords = appData?.manualPriceRecords ?? [];
   const workoutLog = appData?.workoutLog ?? [];
@@ -443,8 +444,9 @@ function App() {
   const sortedWorkoutPlans = [...workoutPlans].sort((a, b) =>
     `${a.plannedDate}T${a.plannedTime}`.localeCompare(`${b.plannedDate}T${b.plannedTime}`),
   );
-  const todayIndex = Math.max(planner.findIndex((day) => day.day === todayLabel()), 0);
-  const todayMeals = planner[todayIndex]?.meals ?? [];
+  const todayIndex = Math.max(normalizedPlanner.findIndex((day) => day.day === todayLabel()), 0);
+  const safeDayIndex = Math.min(dayIndex, Math.max(normalizedPlanner.length - 1, 0));
+  const todayMeals = normalizedPlanner[todayIndex]?.meals ?? [];
   const totals = mealTotals(todayMeals);
   const activeGroceryList = groceryLists[0] ?? createInitialGroceryLists()[0];
   const pricedGroceryList = {
@@ -1174,7 +1176,7 @@ function App() {
 
     updatePlanner((current) =>
       current.map((day, index) =>
-        index !== dayIndex
+        index !== safeDayIndex
           ? day
           : editingMealId
             ? {
@@ -1195,7 +1197,7 @@ function App() {
   }
 
   function editMeal(mealId: string) {
-    const meal = planner[dayIndex]?.meals.find((entry) => (entry.id ?? entry.title) === mealId);
+    const meal = normalizedPlanner[safeDayIndex]?.meals.find((entry) => (entry.id ?? entry.title) === mealId);
     if (!meal) return;
     setLoggingMethod("search");
     setPendingEntries([mealToNutritionEntry(meal)]);
@@ -1205,7 +1207,7 @@ function App() {
 
   function removeMeal(mealId: string) {
     updatePlanner((current) =>
-      current.map((day, index) => (index === dayIndex ? { ...day, meals: day.meals.filter((meal) => (meal.id ?? meal.title) !== mealId) } : day)),
+      current.map((day, index) => (index === safeDayIndex ? { ...day, meals: day.meals.filter((meal) => (meal.id ?? meal.title) !== mealId) } : day)),
     );
     if (editingMealId === mealId) resetDetectionState();
   }
@@ -1347,7 +1349,7 @@ function App() {
       );
     }
     if (activeTab === "meals") {
-      const day = planner[dayIndex];
+      const day = normalizedPlanner[safeDayIndex] ?? normalizedPlanner[0];
       const dayTotals = mealTotals(day.meals);
       return (
         <NutritionLogger

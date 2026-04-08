@@ -1,8 +1,11 @@
+.git
+.vercel
+.env
 node_modules
 dist
 out
 release
+user-data
 electron-dev.log
 web-dev.log
-.env
-.vercel
+ios

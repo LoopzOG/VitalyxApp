@@ -276,6 +276,16 @@ function App() {
   const photoInputRef = useRef<HTMLInputElement | null>(null);
   const hasLoadedRemoteData = useRef(false);
 
+  function requireSupabaseConfig() {
+    if (hasSupabaseConfig) {
+      return true;
+    }
+
+    setAuthError("Supabase is not configured for this deployment yet. Add the Vercel environment variables and redeploy auth.");
+    setAuthInfo(null);
+    return false;
+  }
+
   useEffect(() => {
     let cancelled = false;
 
@@ -851,6 +861,10 @@ function App() {
   }
 
   async function handleSignIn(input: { email: string; password: string }) {
+    if (!requireSupabaseConfig()) {
+      return;
+    }
+
     setAuthLoading(true);
     setAuthError(null);
     setAuthInfo(null);
@@ -888,6 +902,10 @@ function App() {
   }
 
   async function handleRegister(input: { name: string; email: string; password: string }) {
+    if (!requireSupabaseConfig()) {
+      return;
+    }
+
     setAuthLoading(true);
     setAuthError(null);
     setAuthInfo(null);
@@ -935,6 +953,10 @@ function App() {
   }
 
   async function handleForgotPassword(input: { email: string }) {
+    if (!requireSupabaseConfig()) {
+      return;
+    }
+
     setAuthLoading(true);
     setAuthError(null);
     setAuthInfo(null);
@@ -952,6 +974,10 @@ function App() {
   }
 
   async function handleResetPassword(input: { password: string; confirmPassword: string }) {
+    if (!requireSupabaseConfig()) {
+      return;
+    }
+
     setAuthLoading(true);
     setAuthError(null);
     setAuthInfo(null);

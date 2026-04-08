@@ -7,6 +7,7 @@ Create a local `.env` file from [.env.example](C:\Users\danah\OneDrive\Desktop\P
 ```bash
 VITE_SUPABASE_URL=https://your-project-id.supabase.co
 VITE_SUPABASE_ANON_KEY=your-public-anon-key
+VITE_APP_URL=https://www.vitalyxapp.com
 ```
 
 Set the same values in your hosting provider before deploying.
@@ -34,13 +35,14 @@ Enable Email auth in Supabase Auth.
 Recommended production settings:
 
 - Enable email confirmations
-- Set the site URL to your production domain
+- Set the site URL to `https://www.vitalyxapp.com`
 - Add your localhost dev URL and production domain to Redirect URLs
 
 Suggested redirect URLs:
 
 - `http://127.0.0.1:5173/`
-- your production domain root URL
+- `https://www.vitalyxapp.com/`
+- `https://vitalyxapp.com/`
 
 ## 4. Managing admins from Supabase tables
 

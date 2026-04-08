@@ -2,6 +2,24 @@ import type { AuthChangeEvent, User } from "@supabase/supabase-js";
 import type { SessionUser } from "@/lib/storage";
 import { supabase } from "@/lib/supabase";
 
+function normalizeAppUrl(value: string) {
+  const trimmedValue = value.trim();
+  if (!trimmedValue) {
+    return "";
+  }
+
+  return trimmedValue.endsWith("/") ? trimmedValue : `${trimmedValue}/`;
+}
+
+function getAuthRedirectUrl() {
+  const configuredAppUrl = normalizeAppUrl(import.meta.env.VITE_APP_URL ?? "");
+  if (configuredAppUrl) {
+    return configuredAppUrl;
+  }
+
+  return normalizeAppUrl(window.location.origin);
+}
+
 function displayNameFromUser(user: User) {
   const metadataName = typeof user.user_metadata?.display_name === "string" ? user.user_metadata.display_name : "";
   if (metadataName.trim()) {
@@ -33,7 +51,7 @@ export async function signUpWithPassword(input: { email: string; password: strin
       data: {
         display_name: input.displayName,
       },
-      emailRedirectTo: `${window.location.origin}/`,
+      emailRedirectTo: getAuthRedirectUrl(),
     },
   });
 
@@ -61,7 +79,7 @@ export async function signOutUser() {
 
 export async function sendPasswordReset(email: string) {
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${window.location.origin}/`,
+    redirectTo: getAuthRedirectUrl(),
   });
 
   if (error) {

@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Barcode, ScanLine } from "lucide-react";
 import type { GroceryUnit } from "@/lib/groceryTypes";
 import { mockStores } from "@/lib/groceryMockData";
+import { scanBarcodeFromImage } from "@/lib/barcodeScanner";
 
 type AddItemFormProps = {
   onAdd: (input: {
@@ -36,9 +37,11 @@ export function AddItemForm({ onAdd, onBarcodeLookup, isPremiumSubscriber, onUpg
   const [barcode, setBarcode] = useState("");
   const [barcodeFeedback, setBarcodeFeedback] = useState<string | null>(null);
   const [isLookingUpBarcode, setIsLookingUpBarcode] = useState(false);
+  const [isScanningBarcode, setIsScanningBarcode] = useState(false);
+  const barcodeCaptureInputRef = useRef<HTMLInputElement | null>(null);
 
-  async function runBarcodeLookup() {
-    const cleaned = barcode.replace(/[^\d]/g, "");
+  async function runBarcodeLookup(nextBarcode = barcode) {
+    const cleaned = nextBarcode.replace(/[^\d]/g, "");
     if (!cleaned) {
       setBarcodeFeedback("Enter a barcode to look up a grocery item.");
       return;
@@ -60,8 +63,39 @@ export function AddItemForm({ onAdd, onBarcodeLookup, isPremiumSubscriber, onUpg
     setBarcodeFeedback(`Matched from ${result.sourceLabel}. Review quantity and store before saving.`);
   }
 
+  async function handleBarcodeCapture(file: File) {
+    setIsScanningBarcode(true);
+    setBarcodeFeedback("Scanning barcode from the camera image...");
+
+    const detectedBarcode = await scanBarcodeFromImage(file);
+    setIsScanningBarcode(false);
+
+    if (!detectedBarcode) {
+      setBarcodeFeedback("No barcode was detected in that image. Try better lighting, hold the UPC flat, or enter it manually.");
+      return;
+    }
+
+    setBarcode(detectedBarcode);
+    setBarcodeFeedback(`Detected ${detectedBarcode}. Looking up the product now...`);
+    await runBarcodeLookup(detectedBarcode);
+  }
+
   return (
     <div className="rounded-[24px] border border-white/8 bg-white/[0.04] p-4">
+      <input
+        ref={barcodeCaptureInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (file) {
+            void handleBarcodeCapture(file);
+          }
+          event.currentTarget.value = "";
+        }}
+      />
       <div className="mb-4">
         <p className="text-sm font-medium text-white">Add grocery item</p>
         <p className="mt-1 text-sm text-zinc-400">
@@ -110,7 +144,9 @@ export function AddItemForm({ onAdd, onBarcodeLookup, isPremiumSubscriber, onUpg
               </div>
               <button
                 type="button"
-                onClick={runBarcodeLookup}
+                onClick={() => {
+                  void runBarcodeLookup();
+                }}
                 className="rounded-[20px] border border-white/10 bg-black/20 px-4 py-3 text-sm font-medium text-zinc-100"
               >
                 Lookup
@@ -126,12 +162,12 @@ export function AddItemForm({ onAdd, onBarcodeLookup, isPremiumSubscriber, onUpg
                   return;
                 }
 
-                setBarcodeFeedback("Premium UPC scanning is unlocked. Camera capture can plug into this barcode field next, and manual entry still works now.");
+                barcodeCaptureInputRef.current?.click();
               }}
               className="flex w-full items-center justify-center gap-2 rounded-[20px] border border-dashed border-white/10 bg-black/20 px-4 py-3 text-sm text-zinc-300"
             >
               <ScanLine size={16} />
-              {isPremiumSubscriber ? "Scan UPC (Premium)" : "Unlock UPC Scanning"}
+              {isScanningBarcode ? "Scanning UPC..." : isPremiumSubscriber ? "Scan UPC (Premium)" : "Unlock UPC Scanning"}
             </button>
 
             {!isPremiumSubscriber ? (
@@ -141,7 +177,9 @@ export function AddItemForm({ onAdd, onBarcodeLookup, isPremiumSubscriber, onUpg
             ) : null}
 
             <div className="rounded-[20px] border border-white/8 bg-black/20 p-3 text-sm text-zinc-300">
-          {isLookingUpBarcode
+          {isScanningBarcode
+                ? "Reading barcode from the captured image..."
+                : isLookingUpBarcode
                 ? "Checking barcode..."
                 : barcodeFeedback ?? "Use a packaged food barcode to prefill the grocery item. Manual barcode lookup is free, and premium adds tap-to-scan UPC capture."}
             </div>

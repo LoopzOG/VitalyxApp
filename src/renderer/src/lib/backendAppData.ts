@@ -5,6 +5,8 @@ type ProfileRecord = {
   id: string;
   email: string;
   display_name: string;
+  role: SessionUser["role"];
+  subscription_tier: SessionUser["subscriptionTier"];
   created_at: string;
 };
 
@@ -15,7 +17,11 @@ type UserAppDataRow = {
 };
 
 export async function fetchUserProfile(userId: string) {
-  const { data, error } = await supabase.from("profiles").select("id, email, display_name, created_at").eq("id", userId).maybeSingle<ProfileRecord>();
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id, email, display_name, role, subscription_tier, created_at")
+    .eq("id", userId)
+    .maybeSingle<ProfileRecord>();
   if (error) {
     throw error;
   }
@@ -28,6 +34,8 @@ export function applyProfileToSessionUser(user: SessionUser, profile: ProfileRec
     ...user,
     name: profile?.display_name?.trim() || user.name,
     email: profile?.email?.trim() || user.email,
+    role: profile?.role ?? user.role,
+    subscriptionTier: profile?.subscription_tier ?? user.subscriptionTier,
   };
 }
 
@@ -53,4 +61,22 @@ export async function saveUserAppData(userId: string, nextData: UserAppData) {
   if (error) {
     throw error;
   }
+}
+
+export async function updateUserAccessProfile(
+  userId: string,
+  updates: Partial<Pick<ProfileRecord, "role" | "subscription_tier" | "display_name" | "email">>,
+) {
+  const { data, error } = await supabase
+    .from("profiles")
+    .update(updates)
+    .eq("id", userId)
+    .select("id, email, display_name, role, subscription_tier, created_at")
+    .single<ProfileRecord>();
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
 }

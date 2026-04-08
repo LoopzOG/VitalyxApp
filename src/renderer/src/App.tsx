@@ -34,7 +34,6 @@ import {
   loadPromoCodes,
   generatePremiumPromoCode,
   redeemPromoCode,
-  updateAccountSubscription,
   type PromoCodeRecord,
   type SessionUser,
   type UserAppData,
@@ -42,7 +41,7 @@ import {
   type WorkoutLogEntry,
   type WorkoutPlanEntry,
 } from "@/lib/storage";
-import { applyProfileToSessionUser, fetchUserAppData, fetchUserProfile, saveUserAppData } from "@/lib/backendAppData";
+import { applyProfileToSessionUser, fetchUserAppData, fetchUserProfile, saveUserAppData, updateUserAccessProfile } from "@/lib/backendAppData";
 import { getRestoredSessionUser, sendPasswordReset, signInWithPassword, signOutUser, signUpWithPassword, subscribeToAuthChanges, updatePassword } from "@/lib/backendAuth";
 import { createInitialGroceryLists } from "@/lib/groceryState";
 import {
@@ -56,6 +55,7 @@ import {
   type ExerciseTab,
 } from "@/lib/exerciseDatabase";
 import { groceryPriceService, productMatchingService, storeComparisonService } from "@/lib/groceryServices";
+import { getErrorMessage } from "@/lib/errorMessages";
 import { formatExerciseSearch, getExerciseMap, getMuscleOptions, groupExerciseResults, searchExercises } from "@/lib/exerciseSearch";
 import { formatMacro, parseMacroString, parseNumber } from "@/lib/macroEstimator";
 import { nutritionService, type NutritionEntry } from "@/lib/nutritionService";
@@ -308,7 +308,7 @@ function App() {
         }
       } catch (error) {
         if (!cancelled) {
-          setAuthError(error instanceof Error ? error.message : "Unable to restore the secure session.");
+          setAuthError(getErrorMessage(error, "Unable to restore the secure session."));
         }
       } finally {
         if (!cancelled) {
@@ -343,7 +343,7 @@ function App() {
           setAppData(hydratedData);
           hasLoadedRemoteData.current = true;
         } catch (error) {
-          setAuthError(error instanceof Error ? error.message : "Unable to load your account data.");
+          setAuthError(getErrorMessage(error, "Unable to load your account data."));
         }
       })();
     });
@@ -361,7 +361,7 @@ function App() {
 
     const timeoutId = window.setTimeout(() => {
       void saveUserAppData(user.id, appData).catch((error) => {
-        setAuthError(error instanceof Error ? error.message : "Unable to save your data to the backend.");
+        setAuthError(getErrorMessage(error, "Unable to save your data to the backend."));
       });
     }, 500);
 
@@ -880,7 +880,7 @@ function App() {
       hasLoadedRemoteData.current = true;
       setAuthMode("signin");
     } catch (error) {
-      setAuthError(error instanceof Error ? error.message : "Unable to sign in.");
+      setAuthError(getErrorMessage(error, "Unable to sign in."));
       throw error;
     } finally {
       setAuthLoading(false);
@@ -927,7 +927,7 @@ function App() {
       setAuthInfo("Your account is ready and your secure session has started.");
       setAuthMode("signin");
     } catch (error) {
-      setAuthError(error instanceof Error ? error.message : "Unable to create account.");
+      setAuthError(getErrorMessage(error, "Unable to create account."));
       throw error;
     } finally {
       setAuthLoading(false);
@@ -944,7 +944,7 @@ function App() {
       setAuthInfo("Password reset email sent. Open the link from your inbox to continue.");
       setAuthMode("signin");
     } catch (error) {
-      setAuthError(error instanceof Error ? error.message : "Unable to send the password reset email.");
+      setAuthError(getErrorMessage(error, "Unable to send the password reset email."));
       throw error;
     } finally {
       setAuthLoading(false);
@@ -961,7 +961,7 @@ function App() {
       setAuthInfo("Password updated. You can now sign in with the new password.");
       setAuthMode("signin");
     } catch (error) {
-      setAuthError(error instanceof Error ? error.message : "Unable to update the password.");
+      setAuthError(getErrorMessage(error, "Unable to update the password."));
       throw error;
     } finally {
       setAuthLoading(false);
@@ -972,7 +972,7 @@ function App() {
     try {
       await signOutUser();
     } catch (error) {
-      setAuthError(error instanceof Error ? error.message : "Unable to sign out right now.");
+      setAuthError(getErrorMessage(error, "Unable to sign out right now."));
     } finally {
       hasLoadedRemoteData.current = false;
       setUser(null);
@@ -985,7 +985,7 @@ function App() {
     setPromoCodes(loadPromoCodes());
   }
 
-  function handleUpgradeToPremium() {
+  async function handleUpgradeToPremium() {
     if (!user) {
       return;
     }
@@ -995,22 +995,16 @@ function App() {
       return;
     }
 
-    const nextAccount = updateAccountSubscription(user.id, "premium");
-    if (!nextAccount) {
-      setFeedback("Unable to update the subscription right now.");
-      return;
+    try {
+      const nextProfile = await updateUserAccessProfile(user.id, {
+        subscription_tier: "premium",
+      });
+      const nextUser = applyProfileToSessionUser(user, nextProfile);
+      setUser(nextUser);
+      setFeedback("Premium unlocked. UPC camera scanning is now available on this account.");
+    } catch (error) {
+      setFeedback(getErrorMessage(error, "Unable to update the subscription right now."));
     }
-
-    const nextUser: SessionUser = {
-      id: nextAccount.id,
-      name: nextAccount.name,
-      email: nextAccount.email,
-      role: nextAccount.role,
-      subscriptionTier: nextAccount.subscriptionTier,
-    };
-
-    setUser(nextUser);
-    setFeedback("Premium unlocked. UPC camera scanning is now available on this account.");
   }
 
   function handleGeneratePromoCode() {
@@ -1023,27 +1017,24 @@ function App() {
     setFeedback(`Premium promo code generated: ${nextCode.code}`);
   }
 
-  function handleRedeemPromoCode() {
+  async function handleRedeemPromoCode() {
     if (!user) {
       return;
     }
 
     try {
       const result = redeemPromoCode({ code: promoCodeInput, userId: user.id });
-      const nextUser: SessionUser = {
-        id: result.account.id,
-        name: result.account.name,
-        email: result.account.email,
-        role: result.account.role,
-        subscriptionTier: result.account.subscriptionTier,
-      };
+      const nextProfile = await updateUserAccessProfile(user.id, {
+        subscription_tier: result.promoCode.subscriptionTier,
+      });
+      const nextUser = applyProfileToSessionUser(user, nextProfile);
 
       setUser(nextUser);
       setPromoCodeInput("");
       refreshPromoCodes();
       setFeedback(`Promo code applied. ${result.promoCode.subscriptionTier === "premium" ? "Premium" : "Subscription"} is now active.`);
     } catch (error) {
-      setFeedback(error instanceof Error ? error.message : "Unable to redeem that promo code.");
+      setFeedback(getErrorMessage(error, "Unable to redeem that promo code."));
     }
   }
 

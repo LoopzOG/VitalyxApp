@@ -38,8 +38,9 @@ export function Sidebar({ activePage, onNavigate, user, onSignOut }: SidebarProp
       <aside className="hidden w-72 shrink-0 border-r border-white/8 bg-black/20 xl:flex xl:flex-col">
         <div className="border-b border-white/8 p-6">
           <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center rounded-[20px] border border-emerald-300/15 bg-black/25 px-3 py-2 shadow-[0_0_32px_rgba(52,211,153,0.12)]">
-              <LogoMark className="h-auto w-24" />
+            <div className="relative flex items-center justify-center overflow-hidden rounded-[22px] border border-white/10 bg-[radial-gradient(circle_at_top,rgba(132,204,22,0.16),rgba(16,18,22,0.94)_58%)] px-2.5 py-2 shadow-[0_16px_36px_rgba(0,0,0,0.28)]">
+              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(163,230,53,0.14),transparent_62%)]" />
+              <LogoMark className="relative h-auto w-24" />
             </div>
             <div>
               <p className="text-xs uppercase tracking-[0.28em] text-emerald-300/80">Vitalyx</p>

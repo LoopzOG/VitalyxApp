@@ -46,7 +46,7 @@ export function AuthScreen({
 
   const subtitle = useMemo(() => {
     if (mode === "register") return "Sign up with your email and password. Your account and profile will be created in Supabase.";
-    if (mode === "forgot-password") return "Enter your email and we’ll send you a password reset link.";
+    if (mode === "forgot-password") return "Enter your email and we'll send you a password reset link.";
     if (mode === "reset-password") return "Your recovery session is active. Set a new password to finish recovering the account.";
     return "Sign in to restore your secure session and load your dashboard data.";
   }, [mode]);
@@ -117,8 +117,9 @@ export function AuthScreen({
       <div className="auth-phone-frame relative w-full max-w-[30rem] rounded-[36px] border border-white/10 bg-[rgba(9,10,14,0.78)] p-4 shadow-[0_28px_80px_rgba(0,0,0,0.42)] backdrop-blur-xl sm:p-5">
         <div className="auth-phone-inner rounded-[30px] border border-white/8 bg-[linear-gradient(180deg,rgba(255,255,255,0.06),rgba(255,255,255,0.02))] px-5 pb-6 pt-[calc(1.25rem+env(safe-area-inset-top,0px))] sm:px-6 sm:pb-7">
           <div className="mx-auto flex max-w-sm flex-col items-center text-center">
-            <div className="relative flex items-center justify-center rounded-[28px] border border-emerald-300/20 bg-black/35 px-5 py-4 shadow-[0_0_40px_rgba(52,211,153,0.14)]">
-              <LogoMark className="h-auto w-44 sm:w-48" />
+            <div className="relative flex items-center justify-center overflow-hidden rounded-[30px] border border-white/10 bg-[radial-gradient(circle_at_top,rgba(132,204,22,0.18),rgba(18,20,24,0.96)_58%)] px-4 py-4 shadow-[0_18px_55px_rgba(0,0,0,0.34)]">
+              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(163,230,53,0.16),transparent_58%)]" />
+              <LogoMark className="relative h-auto w-48 sm:w-52" />
             </div>
             <h1 className="mt-6 text-3xl font-semibold tracking-tight text-white sm:text-[2.1rem]">
               Secure access for Vitalyx
@@ -165,7 +166,7 @@ export function AuthScreen({
                     value={name}
                     onChange={(event) => setName(event.target.value)}
                     className="rounded-2xl border border-white/10 bg-zinc-900/60 px-4 py-3 text-white outline-none"
-                    placeholder="Dana Rivers"
+                    placeholder="John Doe"
                   />
                 </label>
               ) : null}

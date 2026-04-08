@@ -2,8 +2,6 @@ import type { AuthChangeEvent, User } from "@supabase/supabase-js";
 import type { SessionUser } from "@/lib/storage";
 import { supabase } from "@/lib/supabase";
 
-const adminEmail = import.meta.env.VITE_ADMIN_EMAIL?.trim().toLowerCase() ?? "";
-
 function displayNameFromUser(user: User) {
   const metadataName = typeof user.user_metadata?.display_name === "string" ? user.user_metadata.display_name : "";
   if (metadataName.trim()) {
@@ -18,15 +16,12 @@ function displayNameFromUser(user: User) {
 }
 
 export function mapAuthUser(user: User): SessionUser {
-  const normalizedEmail = user.email?.trim().toLowerCase() ?? "";
-  const isAdmin = Boolean(adminEmail) && normalizedEmail === adminEmail;
-
   return {
     id: user.id,
     name: displayNameFromUser(user),
     email: user.email ?? "",
-    role: isAdmin ? "admin" : "user",
-    subscriptionTier: isAdmin ? "premium" : "free",
+    role: "user",
+    subscriptionTier: "free",
   };
 }
 

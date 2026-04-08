@@ -7,7 +7,6 @@ Create a local `.env` file from [.env.example](C:\Users\danah\OneDrive\Desktop\P
 ```bash
 VITE_SUPABASE_URL=https://your-project-id.supabase.co
 VITE_SUPABASE_ANON_KEY=your-public-anon-key
-VITE_ADMIN_EMAIL=admin@example.com
 ```
 
 Set the same values in your hosting provider before deploying.
@@ -22,6 +21,11 @@ That creates:
 - `user_app_data`
 - a trigger that creates both records when a new auth user is created
 - Row Level Security policies so users only access their own rows
+
+The `profiles` table now also owns:
+
+- `role` with `user` or `admin`
+- `subscription_tier` with `free` or `premium`
 
 ## 3. Supabase Auth settings
 
@@ -38,7 +42,20 @@ Suggested redirect URLs:
 - `http://127.0.0.1:5173/`
 - your production domain root URL
 
-## 4. Deployment notes
+## 4. Managing admins from Supabase tables
+
+Admins are now managed from the `profiles` table instead of an environment variable.
+
+To promote an existing user to admin in Supabase SQL:
+
+```sql
+update public.profiles
+set role = 'admin',
+    subscription_tier = 'premium'
+where email = 'you@example.com';
+```
+
+## 5. Deployment notes
 
 - Only expose the public anon key in the frontend
 - Never ship the service-role key to the client

@@ -4,8 +4,16 @@ create table if not exists public.profiles (
   id uuid primary key references auth.users (id) on delete cascade,
   email text not null unique,
   display_name text not null,
+  role text not null default 'user' check (role in ('user', 'admin')),
+  subscription_tier text not null default 'free' check (subscription_tier in ('free', 'premium')),
   created_at timestamptz not null default timezone('utc', now())
 );
+
+alter table public.profiles
+  add column if not exists role text not null default 'user' check (role in ('user', 'admin'));
+
+alter table public.profiles
+  add column if not exists subscription_tier text not null default 'free' check (subscription_tier in ('free', 'premium'));
 
 create table if not exists public.user_app_data (
   user_id uuid primary key references auth.users (id) on delete cascade,
@@ -72,6 +80,7 @@ on public.profiles
 for insert
 with check (auth.uid() = id);
 
+
 drop policy if exists "profiles_update_own" on public.profiles;
 create policy "profiles_update_own"
 on public.profiles
@@ -97,3 +106,8 @@ on public.user_app_data
 for update
 using (auth.uid() = user_id)
 with check (auth.uid() = user_id);
+
+update public.profiles
+set role = 'admin',
+    subscription_tier = 'premium'
+where email = 'VitalyxHealth@gmail.com';

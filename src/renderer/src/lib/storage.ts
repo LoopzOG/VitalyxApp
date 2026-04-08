@@ -6,6 +6,7 @@ const ACCOUNTS_KEY = "vitalyx.accounts.v1";
 const SESSION_KEY = "vitalyx.session.v1";
 const USER_DATA_KEY = "vitalyx.userdata.v1";
 const PROMO_CODES_KEY = "vitalyx.promocodes.v1";
+const ACCOUNT_AUDIT_LOG_KEY = "vitalyx.accountaudit.v1";
 
 export type StoredAccount = {
   id: string;
@@ -47,12 +48,31 @@ export type WorkoutPlanEntry = {
   createdAt: string;
 };
 
+export type CardioLogEntry = {
+  id: string;
+  exerciseId: string;
+  exerciseName: string;
+  workoutDay: string;
+  loggedDate: string;
+  loggedTime: string;
+  durationMinutes?: number;
+  steps?: number;
+  miles?: number;
+  pace?: string;
+  estimatedCaloriesBurned?: number;
+  loggedAt: string;
+};
+
 export type UserAppData = {
   planner: PlannerDay[];
   groceryLists: GroceryList[];
   manualPriceRecords: PriceRecord[];
   workoutLog: WorkoutLogEntry[];
   workoutPlans: WorkoutPlanEntry[];
+  cardioLog: CardioLogEntry[];
+  favoriteExerciseIds: string[];
+  recentExerciseIds: string[];
+  recentExerciseSearches: string[];
   usageDates: string[];
 };
 
@@ -64,6 +84,15 @@ export type PromoCodeRecord = {
   createdByUserId: string;
   redeemedAt?: string;
   redeemedByUserId?: string;
+};
+
+export type AccountAuditRecord = {
+  id: string;
+  accountId: string;
+  email: string;
+  action: "register" | "login" | "logout" | "subscription-updated";
+  createdAt: string;
+  metadata?: Record<string, string>;
 };
 
 function uid() {
@@ -121,6 +150,35 @@ function safeWrite<T>(key: string, value: T) {
   localStorage.setItem(key, JSON.stringify(value));
 }
 
+function appendAccountAuditRecord(record: Omit<AccountAuditRecord, "id" | "createdAt">) {
+  const records = safeRead<AccountAuditRecord[]>(ACCOUNT_AUDIT_LOG_KEY, []);
+  const nextRecord: AccountAuditRecord = {
+    id: uid(),
+    createdAt: new Date().toISOString(),
+    ...record,
+  };
+  safeWrite(ACCOUNT_AUDIT_LOG_KEY, [nextRecord, ...records].slice(0, 500));
+}
+
+export function loadAccountAuditLog() {
+  return safeRead<AccountAuditRecord[]>(ACCOUNT_AUDIT_LOG_KEY, [])
+    .filter((record) => Boolean(record && typeof record === "object"))
+    .map((record) => ({
+      id: typeof record.id === "string" ? record.id : uid(),
+      accountId: typeof record.accountId === "string" ? record.accountId : "unknown",
+      email: typeof record.email === "string" ? record.email : "unknown",
+      action:
+        record.action === "register" || record.action === "login" || record.action === "logout" || record.action === "subscription-updated"
+          ? record.action
+          : "register",
+      createdAt: typeof record.createdAt === "string" ? record.createdAt : new Date().toISOString(),
+      metadata:
+        record.metadata && typeof record.metadata === "object"
+          ? Object.fromEntries(Object.entries(record.metadata).filter((entry): entry is [string, string] => typeof entry[0] === "string" && typeof entry[1] === "string"))
+          : undefined,
+    }));
+}
+
 export function createInitialUserData(): UserAppData {
   return {
     planner: createInitialPlanner(),
@@ -128,6 +186,10 @@ export function createInitialUserData(): UserAppData {
     manualPriceRecords: [],
     workoutLog: [],
     workoutPlans: [],
+    cardioLog: [],
+    favoriteExerciseIds: [],
+    recentExerciseIds: [],
+    recentExerciseSearches: [],
     usageDates: [],
   };
 }
@@ -191,6 +253,15 @@ export function registerAccount(input: {
 
   saveAccounts([...accounts, account]);
   saveUserData(account.id, createInitialUserData());
+  appendAccountAuditRecord({
+    accountId: account.id,
+    email: account.email,
+    action: "register",
+    metadata: {
+      role: account.role,
+      subscriptionTier: account.subscriptionTier,
+    },
+  });
 
   return {
     id: account.id,
@@ -210,6 +281,16 @@ export function authenticateAccount(input: { email: string; password: string }) 
   if (!account) {
     throw new Error("Invalid email or password.");
   }
+
+  appendAccountAuditRecord({
+    accountId: account.id,
+    email: account.email,
+    action: "login",
+    metadata: {
+      role: account.role,
+      subscriptionTier: account.subscriptionTier,
+    },
+  });
 
   return {
     id: account.id,
@@ -237,6 +318,18 @@ export function loadSession() {
 }
 
 export function clearSession() {
+  const session = loadSession();
+  if (session) {
+    appendAccountAuditRecord({
+      accountId: session.id,
+      email: session.email,
+      action: "logout",
+      metadata: {
+        role: session.role,
+        subscriptionTier: session.subscriptionTier,
+      },
+    });
+  }
   localStorage.removeItem(SESSION_KEY);
 }
 
@@ -252,7 +345,18 @@ export function updateAccountSubscription(userId: string, subscriptionTier: "fre
   );
 
   saveAccounts(nextAccounts);
-  return nextAccounts.find((account) => account.id === userId) ?? null;
+  const updatedAccount = nextAccounts.find((account) => account.id === userId) ?? null;
+  if (updatedAccount) {
+    appendAccountAuditRecord({
+      accountId: updatedAccount.id,
+      email: updatedAccount.email,
+      action: "subscription-updated",
+      metadata: {
+        subscriptionTier,
+      },
+    });
+  }
+  return updatedAccount;
 }
 
 export function loadPromoCodes() {
@@ -371,6 +475,39 @@ export function loadUserData(userId: string) {
             plannedTime: typeof entry.plannedTime === "string" ? entry.plannedTime : "18:00",
             createdAt: typeof entry.createdAt === "string" ? entry.createdAt : new Date().toISOString(),
           }))
+      : [],
+    cardioLog: Array.isArray(stored.cardioLog)
+      ? stored.cardioLog
+          .filter((entry) => Boolean(entry && typeof entry === "object"))
+          .map((entry) => {
+            const loggedAt = typeof entry.loggedAt === "string" ? entry.loggedAt : new Date().toISOString();
+            return {
+              id: typeof entry.id === "string" ? entry.id : uid(),
+              exerciseId: typeof entry.exerciseId === "string" ? entry.exerciseId : "cardio",
+              exerciseName: typeof entry.exerciseName === "string" ? entry.exerciseName : "Cardio",
+              workoutDay: typeof entry.workoutDay === "string" ? entry.workoutDay : weekdayFromIso(loggedAt),
+              loggedDate: typeof entry.loggedDate === "string" ? entry.loggedDate : dateFromIso(loggedAt),
+              loggedTime: typeof entry.loggedTime === "string" ? entry.loggedTime : timeFromIso(loggedAt),
+              durationMinutes: typeof entry.durationMinutes === "number" ? entry.durationMinutes : Number(entry.durationMinutes) || undefined,
+              steps: typeof entry.steps === "number" ? entry.steps : Number(entry.steps) || undefined,
+              miles: typeof entry.miles === "number" ? entry.miles : Number(entry.miles) || undefined,
+              pace: typeof entry.pace === "string" ? entry.pace : undefined,
+              estimatedCaloriesBurned:
+                typeof entry.estimatedCaloriesBurned === "number"
+                  ? entry.estimatedCaloriesBurned
+                  : Number(entry.estimatedCaloriesBurned) || undefined,
+              loggedAt,
+            };
+          })
+      : [],
+    favoriteExerciseIds: Array.isArray(stored.favoriteExerciseIds)
+      ? stored.favoriteExerciseIds.filter((value): value is string => typeof value === "string")
+      : [],
+    recentExerciseIds: Array.isArray(stored.recentExerciseIds)
+      ? stored.recentExerciseIds.filter((value): value is string => typeof value === "string")
+      : [],
+    recentExerciseSearches: Array.isArray(stored.recentExerciseSearches)
+      ? stored.recentExerciseSearches.filter((value): value is string => typeof value === "string")
       : [],
     usageDates: Array.isArray(stored.usageDates)
       ? stored.usageDates.filter((value): value is string => typeof value === "string")

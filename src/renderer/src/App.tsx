@@ -1,18 +1,18 @@
-import { useEffect, useRef, useState } from "react";
-import { Apple, Dumbbell, Footprints, Goal, Repeat, RotateCcw, Settings2, Wallet } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Apple, Dumbbell, Flame, Footprints, Goal, HeartPulse, Repeat, RotateCcw, Settings2, Wallet } from "lucide-react";
 import {
   createInitialPlanner,
-  exerciseCatalog,
   fitnessSettings,
   nutritionSettings,
   profileSettings,
   progressKpis,
   workoutSplit,
-  type ExerciseCatalogItem,
   type PlannerMeal,
 } from "@/data";
 import { AddItemForm } from "@/components/AddItemForm";
 import { AuthScreen } from "@/components/AuthScreen";
+import { CardioEntryForm } from "@/components/CardioEntryForm";
+import { ExerciseDatabasePanel } from "@/components/ExerciseDatabasePanel";
 import { GroceryDashboardWidget } from "@/components/GroceryDashboardWidget";
 import { GroceryItemRow } from "@/components/GroceryItemRow";
 import { GroceryListCard } from "@/components/GroceryListCard";
@@ -23,33 +23,43 @@ import { NutritionLogger, type LoggingMethod } from "@/components/NutritionLogge
 import { PriceBadge } from "@/components/PriceBadge";
 import { PriceConfidenceIndicator } from "@/components/PriceConfidenceIndicator";
 import { PriceHistoryCard } from "@/components/PriceHistoryCard";
+import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { SectionCard } from "@/components/SectionCard";
 import { StatCard } from "@/components/StatCard";
 import { StoreComparisonCard } from "@/components/StoreComparisonCard";
 import { TotalCostCard } from "@/components/TotalCostCard";
 import { WorkoutCard } from "@/components/WorkoutCard";
 import {
-  clearSession,
-  loadSession,
-  loadUserData,
+  createInitialUserData,
   loadPromoCodes,
-  registerAccount,
-  authenticateAccount,
-  saveSession,
-  saveUserData,
   generatePremiumPromoCode,
   redeemPromoCode,
   updateAccountSubscription,
   type PromoCodeRecord,
   type SessionUser,
   type UserAppData,
+  type CardioLogEntry,
   type WorkoutLogEntry,
   type WorkoutPlanEntry,
 } from "@/lib/storage";
+import { applyProfileToSessionUser, fetchUserAppData, fetchUserProfile, saveUserAppData } from "@/lib/backendAppData";
+import { getRestoredSessionUser, sendPasswordReset, signInWithPassword, signOutUser, signUpWithPassword, subscribeToAuthChanges, updatePassword } from "@/lib/backendAuth";
 import { createInitialGroceryLists } from "@/lib/groceryState";
+import {
+  cardioQuickPresets,
+  categoryFilterOrder,
+  EQUIPMENT_TAGS,
+  exerciseDatabase,
+  type ExerciseCategory,
+  type CardioQuickPreset,
+  type ExerciseRecord,
+  type ExerciseTab,
+} from "@/lib/exerciseDatabase";
 import { groceryPriceService, productMatchingService, storeComparisonService } from "@/lib/groceryServices";
+import { formatExerciseSearch, getExerciseMap, getMuscleOptions, groupExerciseResults, searchExercises } from "@/lib/exerciseSearch";
 import { formatMacro, parseMacroString, parseNumber } from "@/lib/macroEstimator";
 import { nutritionService, type NutritionEntry } from "@/lib/nutritionService";
+import { hasSupabaseConfig } from "@/lib/supabase";
 import type { GroceryList, GroceryListItem, GroceryUnit, PriceRecord } from "@/lib/groceryTypes";
 import type { MobileTab } from "@/components/BottomNav";
 const tabMeta: Record<MobileTab, { title: string; subtitle: string }> = {
@@ -170,31 +180,18 @@ function abbreviateText(value: string, maxLength: number) {
   return `${value.slice(0, Math.max(0, maxLength - 1)).trimEnd()}...`;
 }
 
-function normalizeExerciseValue(value: string) {
-  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, " ");
+function formatMiles(value?: number) {
+  if (!value) {
+    return "0 mi";
+  }
+  return `${value.toFixed(value >= 10 ? 0 : 1)} mi`;
 }
 
-function findExerciseCatalogItem(value: string) {
-  const normalizedValue = normalizeExerciseValue(value);
-  if (!normalizedValue) {
-    return null;
+function formatCalories(value?: number) {
+  if (!value) {
+    return "0 cal";
   }
-
-  return (
-    exerciseCatalog.find((exercise) => {
-      const values = [exercise.name, ...exercise.aliases];
-      return values.some((option) => normalizeExerciseValue(option) === normalizedValue);
-    }) ?? null
-  );
-}
-
-function matchesExerciseCatalogItem(exercise: ExerciseCatalogItem, query: string) {
-  const normalizedQuery = normalizeExerciseValue(query);
-  if (!normalizedQuery) {
-    return true;
-  }
-
-  return [exercise.name, ...exercise.aliases].some((option) => normalizeExerciseValue(option).includes(normalizedQuery));
+  return `${Math.round(value)} cal`;
 }
 
 function calculateUsageStreak(usageDates: string[]) {
@@ -234,7 +231,10 @@ function App() {
   const [appData, setAppData] = useState<UserAppData | null>(null);
   const [searchValue, setSearchValue] = useState("");
   const [isReady, setIsReady] = useState(false);
+  const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [authInfo, setAuthInfo] = useState<string | null>(null);
+  const [authMode, setAuthMode] = useState<"signin" | "register" | "forgot-password" | "reset-password">("signin");
   const [dayIndex, setDayIndex] = useState(0);
   const [sessionStarted, setSessionStarted] = useState(false);
   const [completedSets, setCompletedSets] = useState(0);
@@ -243,6 +243,20 @@ function App() {
   const [liftSets, setLiftSets] = useState("");
   const [liftWeight, setLiftWeight] = useState("");
   const [liftReps, setLiftReps] = useState("");
+  const [exerciseSearchQuery, setExerciseSearchQuery] = useState("");
+  const [exerciseTab, setExerciseTab] = useState<ExerciseTab>("all");
+  const [selectedExerciseCategory, setSelectedExerciseCategory] = useState<ExerciseCategory | "All">("All");
+  const [selectedEquipmentTag, setSelectedEquipmentTag] = useState<(typeof EQUIPMENT_TAGS)[number] | "All">("All");
+  const [selectedMuscleTag, setSelectedMuscleTag] = useState<string | "All">("All");
+  const [selectedExerciseId, setSelectedExerciseId] = useState<string | null>(null);
+  const [cardioDraft, setCardioDraft] = useState({
+    exerciseId: "",
+    exerciseName: "",
+    durationMinutes: "",
+    steps: "",
+    miles: "",
+    pace: "",
+  });
   const [plannedWorkoutTitle, setPlannedWorkoutTitle] = useState("");
   const [plannedWorkoutFocus, setPlannedWorkoutFocus] = useState("");
   const [plannedWorkoutDay, setPlannedWorkoutDay] = useState(todayLabel());
@@ -260,26 +274,98 @@ function App() {
   const [promoCodes, setPromoCodes] = useState<PromoCodeRecord[]>([]);
   const [promoCodeInput, setPromoCodeInput] = useState("");
   const photoInputRef = useRef<HTMLInputElement | null>(null);
+  const hasLoadedRemoteData = useRef(false);
 
   useEffect(() => {
-    const session = loadSession();
-    setPromoCodes(loadPromoCodes());
-    if (session) {
-      setUser(session);
-      const nextData = loadUserData(session.id);
-      const currentDay = todayKey();
-      const usageDates = nextData.usageDates.includes(currentDay) ? nextData.usageDates : [...nextData.usageDates, currentDay];
-      const hydratedData = { ...nextData, usageDates };
-      setAppData(hydratedData);
-      saveUserData(session.id, hydratedData);
+    let cancelled = false;
+
+    async function bootAuth() {
+      setPromoCodes(loadPromoCodes());
+
+      if (!hasSupabaseConfig) {
+        setAuthError("Supabase is not configured yet. Add the environment variables before deploying auth.");
+        setIsReady(true);
+        return;
+      }
+
+      try {
+        const restoredUser = await getRestoredSessionUser();
+        if (!restoredUser || cancelled) {
+          setIsReady(true);
+          return;
+        }
+
+        const profile = await fetchUserProfile(restoredUser.id);
+        const nextUser = applyProfileToSessionUser(restoredUser, profile);
+        const nextData = await fetchUserAppData(restoredUser.id);
+        const currentDay = todayKey();
+        const hydratedData = nextData.usageDates.includes(currentDay) ? nextData : { ...nextData, usageDates: [...nextData.usageDates, currentDay] };
+
+        if (!cancelled) {
+          setUser(nextUser);
+          setAppData(hydratedData);
+          hasLoadedRemoteData.current = true;
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setAuthError(error instanceof Error ? error.message : "Unable to restore the secure session.");
+        }
+      } finally {
+        if (!cancelled) {
+          setIsReady(true);
+        }
+      }
     }
-    setIsReady(true);
+
+    void bootAuth();
+
+    const { data } = subscribeToAuthChanges((event, nextUser) => {
+      if (event === "PASSWORD_RECOVERY") {
+        setAuthMode("reset-password");
+        setAuthInfo("Enter a new password to finish your recovery.");
+      }
+
+      if (!nextUser) {
+        hasLoadedRemoteData.current = false;
+        setUser(null);
+        setAppData(null);
+        return;
+      }
+
+      void (async () => {
+        try {
+          const profile = await fetchUserProfile(nextUser.id);
+          const normalizedUser = applyProfileToSessionUser(nextUser, profile);
+          const nextData = await fetchUserAppData(nextUser.id);
+          const currentDay = todayKey();
+          const hydratedData = nextData.usageDates.includes(currentDay) ? nextData : { ...nextData, usageDates: [...nextData.usageDates, currentDay] };
+          setUser(normalizedUser);
+          setAppData(hydratedData);
+          hasLoadedRemoteData.current = true;
+        } catch (error) {
+          setAuthError(error instanceof Error ? error.message : "Unable to load your account data.");
+        }
+      })();
+    });
+
+    return () => {
+      cancelled = true;
+      data.subscription.unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
-    if (user && appData) {
-      saveUserData(user.id, appData);
+    if (!user || !appData || !hasLoadedRemoteData.current) {
+      return;
     }
+
+    const timeoutId = window.setTimeout(() => {
+      void saveUserAppData(user.id, appData).catch((error) => {
+        setAuthError(error instanceof Error ? error.message : "Unable to save your data to the backend.");
+      });
+    }, 500);
+
+    return () => window.clearTimeout(timeoutId);
   }, [user, appData]);
 
   const planner = appData?.planner ?? createInitialPlanner();
@@ -287,6 +373,10 @@ function App() {
   const manualPriceRecords = appData?.manualPriceRecords ?? [];
   const workoutLog = appData?.workoutLog ?? [];
   const workoutPlans = appData?.workoutPlans ?? [];
+  const cardioLog = appData?.cardioLog ?? [];
+  const favoriteExerciseIds = appData?.favoriteExerciseIds ?? [];
+  const recentExerciseIds = appData?.recentExerciseIds ?? [];
+  const recentExerciseSearches = appData?.recentExerciseSearches ?? [];
   const usageStreak = calculateUsageStreak(appData?.usageDates ?? []);
   const weeklyWorkoutEntries = workoutLog.filter((entry) => {
     const entryDate = new Date(entry.loggedAt);
@@ -299,6 +389,17 @@ function App() {
   const weeklyWeightLifted = weeklyWorkoutEntries.reduce((total, entry) => total + entry.weight * entry.reps * entry.sets, 0);
   const weeklyReps = weeklyWorkoutEntries.reduce((total, entry) => total + entry.reps * entry.sets, 0);
   const totalSetsLogged = workoutLog.reduce((total, entry) => total + entry.sets, 0);
+  const weeklyCardioEntries = cardioLog.filter((entry) => {
+    const entryDate = new Date(entry.loggedAt);
+    const now = new Date();
+    const startOfWindow = new Date(now);
+    startOfWindow.setHours(0, 0, 0, 0);
+    startOfWindow.setDate(startOfWindow.getDate() - 6);
+    return entryDate >= startOfWindow;
+  });
+  const weeklyCardioMiles = weeklyCardioEntries.reduce((total, entry) => total + (entry.miles ?? 0), 0);
+  const weeklyCardioSteps = weeklyCardioEntries.reduce((total, entry) => total + (entry.steps ?? 0), 0);
+  const weeklyCardioCalories = weeklyCardioEntries.reduce((total, entry) => total + (entry.estimatedCaloriesBurned ?? 0), 0);
   const sortedWorkoutPlans = [...workoutPlans].sort((a, b) =>
     `${a.plannedDate}T${a.plannedTime}`.localeCompare(`${b.plannedDate}T${b.plannedTime}`),
   );
@@ -332,9 +433,47 @@ function App() {
       return { item: name, change: `${prefix}$${Math.abs(delta).toFixed(2)}` };
     })
     .filter((entry): entry is { item: string; change: string } => Boolean(entry));
-  const matchedExercise = findExerciseCatalogItem(exerciseName);
-  const exerciseSuggestions = exerciseCatalog.filter((exercise) => matchesExerciseCatalogItem(exercise, exerciseName)).slice(0, 6);
-  const quickExerciseSuggestions = exerciseCatalog.slice(0, 6);
+  const exerciseMap = useMemo(() => getExerciseMap(exerciseDatabase), []);
+  const selectedExercise = selectedExerciseId ? exerciseMap.get(selectedExerciseId) ?? null : null;
+  const matchedExercise = useMemo(() => {
+    const normalizedName = formatExerciseSearch(exerciseName);
+    if (!normalizedName) {
+      return selectedExercise && !selectedExercise.isCardio ? selectedExercise : null;
+    }
+    return (
+      exerciseDatabase.find((exercise) =>
+        [exercise.name, ...exercise.aliases].some((value) => formatExerciseSearch(value) === normalizedName),
+      ) ?? null
+    );
+  }, [exerciseName, selectedExercise]);
+  const muscleOptions = useMemo(() => ["All", ...getMuscleOptions(exerciseDatabase)], []);
+  const exerciseResults = useMemo(
+    () =>
+      searchExercises(exerciseDatabase, {
+        query: exerciseSearchQuery,
+        tab: exerciseTab,
+        category: selectedExerciseCategory,
+        equipment: selectedEquipmentTag,
+        muscle: selectedMuscleTag,
+      }),
+    [exerciseSearchQuery, exerciseTab, selectedExerciseCategory, selectedEquipmentTag, selectedMuscleTag],
+  );
+  const groupedExerciseResults = useMemo(() => groupExerciseResults(exerciseResults.slice(0, 36)), [exerciseResults]);
+  const recentExercises = recentExerciseIds
+    .map((id) => exerciseMap.get(id))
+    .filter((exercise): exercise is ExerciseRecord => Boolean(exercise))
+    .slice(0, 4);
+  const dropdownResults = useMemo(() => exerciseResults.slice(0, 10), [exerciseResults]);
+
+  useEffect(() => {
+    if (!matchedExercise || matchedExercise.isCardio) {
+      return;
+    }
+
+    setSelectedExerciseId(matchedExercise.id);
+    setLiftSets((current) => current || "3");
+    setLiftReps((current) => current || (matchedExercise.difficulty === "Advanced" ? "5-8" : "8-12"));
+  }, [matchedExercise]);
 
   function updatePlanner(updater: (value: UserAppData["planner"]) => UserAppData["planner"]) {
     setAppData((current) => {
@@ -344,6 +483,10 @@ function App() {
         manualPriceRecords: [],
         workoutLog: [],
         workoutPlans: [],
+        cardioLog: [],
+        favoriteExerciseIds: [],
+        recentExerciseIds: [],
+        recentExerciseSearches: [],
         usageDates: [todayKey()],
       };
       return { ...base, planner: updater(base.planner) };
@@ -358,6 +501,10 @@ function App() {
         manualPriceRecords: [],
         workoutLog: [],
         workoutPlans: [],
+        cardioLog: [],
+        favoriteExerciseIds: [],
+        recentExerciseIds: [],
+        recentExerciseSearches: [],
         usageDates: [todayKey()],
       };
       const nextLists = hydrateGroceryLists(updater(base.groceryLists), base.manualPriceRecords);
@@ -373,6 +520,10 @@ function App() {
         manualPriceRecords: [],
         workoutLog: [],
         workoutPlans: [],
+        cardioLog: [],
+        favoriteExerciseIds: [],
+        recentExerciseIds: [],
+        recentExerciseSearches: [],
         usageDates: [todayKey()],
       };
       const manualPriceRecords = updater(base.manualPriceRecords);
@@ -392,6 +543,10 @@ function App() {
         manualPriceRecords: [],
         workoutLog: [],
         workoutPlans: [],
+        cardioLog: [],
+        favoriteExerciseIds: [],
+        recentExerciseIds: [],
+        recentExerciseSearches: [],
         usageDates: [todayKey()],
       };
       return { ...base, workoutLog: updater(base.workoutLog) };
@@ -406,9 +561,54 @@ function App() {
         manualPriceRecords: [],
         workoutLog: [],
         workoutPlans: [],
+        cardioLog: [],
+        favoriteExerciseIds: [],
+        recentExerciseIds: [],
+        recentExerciseSearches: [],
         usageDates: [todayKey()],
       };
       return { ...base, workoutPlans: updater(base.workoutPlans) };
+    });
+  }
+
+  function updateCardioLog(updater: (entries: CardioLogEntry[]) => CardioLogEntry[]) {
+    setAppData((current) => {
+      const base = current ?? {
+        planner: createInitialPlanner(),
+        groceryLists: createInitialGroceryLists(),
+        manualPriceRecords: [],
+        workoutLog: [],
+        workoutPlans: [],
+        cardioLog: [],
+        favoriteExerciseIds: [],
+        recentExerciseIds: [],
+        recentExerciseSearches: [],
+        usageDates: [todayKey()],
+      };
+      return { ...base, cardioLog: updater(base.cardioLog) };
+    });
+  }
+
+  function updateExerciseLibraryPreferences(
+    updater: (current: Pick<UserAppData, "favoriteExerciseIds" | "recentExerciseIds" | "recentExerciseSearches">) => Pick<
+      UserAppData,
+      "favoriteExerciseIds" | "recentExerciseIds" | "recentExerciseSearches"
+    >,
+  ) {
+    setAppData((current) => {
+      const base = current ?? {
+        planner: createInitialPlanner(),
+        groceryLists: createInitialGroceryLists(),
+        manualPriceRecords: [],
+        workoutLog: [],
+        workoutPlans: [],
+        cardioLog: [],
+        favoriteExerciseIds: [],
+        recentExerciseIds: [],
+        recentExerciseSearches: [],
+        usageDates: [todayKey()],
+      };
+      return { ...base, ...updater(base) };
     });
   }
 
@@ -440,6 +640,9 @@ function App() {
     };
 
     updateWorkoutLog((current) => [nextEntry, ...current]);
+    if (matchedExercise && !matchedExercise.isCardio) {
+      rememberExerciseSelection(matchedExercise);
+    }
     setSessionStarted(true);
     setCompletedSets((current) => current + sets);
     setSavedAt(
@@ -455,28 +658,161 @@ function App() {
     setFeedback(`${exercise} added with ${sets} set${sets === 1 ? "" : "s"} for ${selectedDay} at ${selectedTime}.`);
   }
 
-  function applyExerciseSuggestion(exercise: ExerciseCatalogItem) {
-    setExerciseName(exercise.name);
-    setLiftSets((current) => current || exercise.defaultSets);
-    setLiftReps((current) => current || exercise.defaultReps);
-    setFeedback(`${exercise.name} selected. Autofilled ${exercise.defaultSets} set and ${exercise.defaultReps} reps for ${exercise.focus.toLowerCase()}.`);
-  }
-
   function handleExerciseNameChange(value: string) {
     setExerciseName(value);
+  }
 
-    const matchedCatalogItem = findExerciseCatalogItem(value);
-    if (!matchedCatalogItem) {
+  function rememberExerciseSelection(exercise: ExerciseRecord) {
+    updateExerciseLibraryPreferences((current) => ({
+      favoriteExerciseIds: current.favoriteExerciseIds,
+      recentExerciseIds: [exercise.id, ...current.recentExerciseIds.filter((id) => id !== exercise.id)].slice(0, 8),
+      recentExerciseSearches: exerciseSearchQuery.trim()
+        ? [exerciseSearchQuery.trim(), ...current.recentExerciseSearches.filter((value) => value !== exerciseSearchQuery.trim())].slice(0, 6)
+        : current.recentExerciseSearches,
+    }));
+  }
+
+  function toggleFavoriteExercise(exerciseId: string) {
+    updateExerciseLibraryPreferences((current) => ({
+      recentExerciseIds: current.recentExerciseIds,
+      recentExerciseSearches: current.recentExerciseSearches,
+      favoriteExerciseIds: current.favoriteExerciseIds.includes(exerciseId)
+        ? current.favoriteExerciseIds.filter((id) => id !== exerciseId)
+        : [exerciseId, ...current.favoriteExerciseIds].slice(0, 24),
+    }));
+  }
+
+  function selectExerciseFromLibrary(exercise: ExerciseRecord) {
+    setSelectedExerciseId(exercise.id);
+    rememberExerciseSelection(exercise);
+
+    if (exercise.isCardio) {
+      setCardioDraft((current) => ({
+        ...current,
+        exerciseId: exercise.id,
+        exerciseName: exercise.name,
+      }));
+      setFeedback(`${exercise.name} is ready in the cardio box. Add steps, miles, time, or pace and save it below.`);
       return;
     }
 
-    setLiftSets((current) => current || matchedCatalogItem.defaultSets);
-    setLiftReps((current) => current || matchedCatalogItem.defaultReps);
+    setExerciseName(exercise.name);
+    setLiftSets((current) => current || "3");
+    setLiftReps((current) => current || (exercise.difficulty === "Advanced" ? "5-8" : "8-12"));
+    setFeedback(`${exercise.name} loaded into the strength logger. Add your sets, weight, and reps when you're ready.`);
+  }
+
+  function applyCardioPreset(preset: CardioQuickPreset) {
+    setCardioDraft((current) => ({
+      ...current,
+      durationMinutes: preset.durationMinutes ? `${preset.durationMinutes}` : current.durationMinutes,
+      steps: preset.steps ? `${preset.steps}` : current.steps,
+      miles: preset.miles ? `${preset.miles}` : current.miles,
+    }));
+  }
+
+  function updateCardioDraft(field: keyof typeof cardioDraft, value: string) {
+    setCardioDraft((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
+  function clearStrengthExerciseSelection() {
+    setSelectedExerciseId((current) => {
+      const selected = current ? exerciseMap.get(current) ?? null : null;
+      return selected?.isCardio ? current : null;
+    });
+    setExerciseName("");
+    setLiftSets("");
+    setLiftWeight("");
+    setLiftReps("");
+    setFeedback("Strength exercise removed from the logger.");
+  }
+
+  function clearCardioExerciseSelection() {
+    setSelectedExerciseId((current) => {
+      const selected = current ? exerciseMap.get(current) ?? null : null;
+      return selected?.isCardio ? null : current;
+    });
+    setCardioDraft({
+      exerciseId: "",
+      exerciseName: "",
+      durationMinutes: "",
+      steps: "",
+      miles: "",
+      pace: "",
+    });
+    setFeedback("Cardio exercise removed from the logger.");
+  }
+
+  function addCardioEntry() {
+    const selectedCardioExercise = cardioDraft.exerciseId ? exerciseMap.get(cardioDraft.exerciseId) ?? null : null;
+    if (!selectedCardioExercise || !selectedCardioExercise.isCardio) {
+      setFeedback("Choose a cardio exercise from the cardio box before saving a cardio entry.");
+      return;
+    }
+
+    const durationMinutes = cardioDraft.durationMinutes.trim() ? Number(cardioDraft.durationMinutes) : undefined;
+    const steps = cardioDraft.steps.trim() ? Number(cardioDraft.steps) : undefined;
+    const miles = cardioDraft.miles.trim() ? Number(cardioDraft.miles) : undefined;
+
+    if (
+      (durationMinutes !== undefined && (!Number.isFinite(durationMinutes) || durationMinutes <= 0)) ||
+      (steps !== undefined && (!Number.isFinite(steps) || steps <= 0)) ||
+      (miles !== undefined && (!Number.isFinite(miles) || miles <= 0))
+    ) {
+      setFeedback("Cardio entries need positive numeric values for time, steps, and miles.");
+      return;
+    }
+
+    if (durationMinutes === undefined && steps === undefined && miles === undefined) {
+      setFeedback("Add at least one cardio metric like minutes, steps, or miles before saving.");
+      return;
+    }
+
+    const loggedAt = new Date();
+    const calorieEstimate = durationMinutes && selectedCardioExercise.calorieEstimatePerMinute
+      ? durationMinutes * selectedCardioExercise.calorieEstimatePerMinute
+      : undefined;
+    const nextEntry: CardioLogEntry = {
+      id: crypto.randomUUID(),
+      exerciseId: selectedCardioExercise.id,
+      exerciseName: selectedCardioExercise.name,
+      workoutDay: new Intl.DateTimeFormat(undefined, { weekday: "long" }).format(loggedAt),
+      loggedDate: dateKeyFromValue(loggedAt),
+      loggedTime: timeKeyFromValue(loggedAt),
+      durationMinutes,
+      steps,
+      miles,
+      pace: cardioDraft.pace.trim() || undefined,
+      estimatedCaloriesBurned: calorieEstimate,
+      loggedAt: loggedAt.toISOString(),
+    };
+
+    updateCardioLog((current) => [nextEntry, ...current]);
+    rememberExerciseSelection(selectedCardioExercise);
+    setCardioDraft({
+      exerciseId: selectedCardioExercise.id,
+      exerciseName: selectedCardioExercise.name,
+      durationMinutes: "",
+      steps: "",
+      miles: "",
+      pace: "",
+    });
+    setFeedback(
+      `${selectedCardioExercise.name} saved${steps ? ` with ${steps.toLocaleString()} steps` : ""}${miles ? ` and ${miles} miles` : ""}.`,
+    );
   }
 
   function removeWorkoutEntry(entryId: string) {
     updateWorkoutLog((current) => current.filter((entry) => entry.id !== entryId));
     setFeedback("Workout entry removed.");
+  }
+
+  function removeCardioEntry(entryId: string) {
+    updateCardioLog((current) => current.filter((entry) => entry.id !== entryId));
+    setFeedback("Cardio entry removed.");
   }
 
   function addWorkoutPlan() {
@@ -514,36 +850,135 @@ function App() {
     setFeedback("Planned workout removed.");
   }
 
-  function handleSignIn(input: { email: string; password: string }) {
+  async function handleSignIn(input: { email: string; password: string }) {
+    setAuthLoading(true);
+    setAuthError(null);
+    setAuthInfo(null);
+
     try {
-      const next = authenticateAccount(input);
-      saveSession(next);
-      setUser(next);
-      setAppData(loadUserData(next.id));
-      setAuthError(null);
+      const result = await signInWithPassword(input);
+      if (!result.user) {
+        throw new Error("No authenticated user was returned.");
+      }
+
+      const mappedUser = await getRestoredSessionUser();
+      const baseUser = mappedUser ?? {
+        id: result.user.id,
+        name: input.email.split("@")[0],
+        email: result.user.email ?? input.email,
+        role: "user" as const,
+        subscriptionTier: "free" as const,
+      };
+      const profile = await fetchUserProfile(result.user.id);
+      const nextUser = applyProfileToSessionUser(baseUser, profile);
+      const nextData = await fetchUserAppData(result.user.id);
+      const currentDay = todayKey();
+      const hydratedData = nextData.usageDates.includes(currentDay) ? nextData : { ...nextData, usageDates: [...nextData.usageDates, currentDay] };
+
+      setUser(nextUser);
+      setAppData(hydratedData);
+      hasLoadedRemoteData.current = true;
+      setAuthMode("signin");
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : "Unable to sign in.");
+      throw error;
+    } finally {
+      setAuthLoading(false);
     }
   }
 
-  function handleRegister(input: { name: string; email: string; password: string }) {
+  async function handleRegister(input: { name: string; email: string; password: string }) {
+    setAuthLoading(true);
+    setAuthError(null);
+    setAuthInfo(null);
+
     try {
-      if (!input.name.trim() || !input.email.trim() || !input.password.trim()) throw new Error("Name, email, and password are required.");
-      const next = registerAccount(input);
-      saveSession(next);
-      setUser(next);
-      setAppData(loadUserData(next.id));
-      setAuthError(null);
+      const result = await signUpWithPassword({
+        displayName: input.name,
+        email: input.email,
+        password: input.password,
+      });
+
+      if (!result.user) {
+        throw new Error("Your account could not be created.");
+      }
+
+      if (!result.session) {
+        setAuthInfo("Account created. Check your email to confirm your address before signing in.");
+        setAuthMode("signin");
+        return;
+      }
+
+      const profile = await fetchUserProfile(result.user.id);
+      const nextUser = applyProfileToSessionUser(
+        {
+          id: result.user.id,
+          name: input.name,
+          email: result.user.email ?? input.email,
+          role: "user",
+          subscriptionTier: "free",
+        },
+        profile,
+      );
+      const nextData = await fetchUserAppData(result.user.id);
+      setUser(nextUser);
+      setAppData(nextData);
+      hasLoadedRemoteData.current = true;
+      setAuthInfo("Your account is ready and your secure session has started.");
+      setAuthMode("signin");
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : "Unable to create account.");
+      throw error;
+    } finally {
+      setAuthLoading(false);
     }
   }
 
-  function handleSignOut() {
-    clearSession();
-    setUser(null);
-    setAppData(null);
-    setActiveTab("home");
+  async function handleForgotPassword(input: { email: string }) {
+    setAuthLoading(true);
+    setAuthError(null);
+    setAuthInfo(null);
+
+    try {
+      await sendPasswordReset(input.email);
+      setAuthInfo("Password reset email sent. Open the link from your inbox to continue.");
+      setAuthMode("signin");
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : "Unable to send the password reset email.");
+      throw error;
+    } finally {
+      setAuthLoading(false);
+    }
+  }
+
+  async function handleResetPassword(input: { password: string; confirmPassword: string }) {
+    setAuthLoading(true);
+    setAuthError(null);
+    setAuthInfo(null);
+
+    try {
+      await updatePassword(input.password);
+      setAuthInfo("Password updated. You can now sign in with the new password.");
+      setAuthMode("signin");
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : "Unable to update the password.");
+      throw error;
+    } finally {
+      setAuthLoading(false);
+    }
+  }
+
+  async function handleSignOut() {
+    try {
+      await signOutUser();
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : "Unable to sign out right now.");
+    } finally {
+      hasLoadedRemoteData.current = false;
+      setUser(null);
+      setAppData(null);
+      setActiveTab("home");
+    }
   }
 
   function refreshPromoCodes() {
@@ -574,7 +1009,6 @@ function App() {
       subscriptionTier: nextAccount.subscriptionTier,
     };
 
-    saveSession(nextUser);
     setUser(nextUser);
     setFeedback("Premium unlocked. UPC camera scanning is now available on this account.");
   }
@@ -604,7 +1038,6 @@ function App() {
         subscriptionTier: result.account.subscriptionTier,
       };
 
-      saveSession(nextUser);
       setUser(nextUser);
       setPromoCodeInput("");
       refreshPromoCodes();
@@ -985,55 +1418,73 @@ function App() {
               )}
             </div>
           </SectionCard>
-          <SectionCard eyebrow="Workout logging" title="Add a set">
+          <SectionCard eyebrow="Exercise database" title="Search lifts, favorites, and cardio">
             <div className="rounded-[22px] border border-emerald-400/15 bg-emerald-400/10 p-4 text-sm text-emerald-100">
-              {feedback ?? (sessionStarted ? `${completedSets} sets logged so far. Last entry at ${savedAt}.` : "Type the exercise, sets, weight, and reps. The app saves it to the current day automatically.")}
+              {feedback ?? (sessionStarted ? `${completedSets} sets logged so far. Last entry at ${savedAt}.` : "Search by name, muscle, equipment, or category, then send the exercise into either the strength logger or cardio box.")}
             </div>
-            <div className="mt-4 grid gap-3">
+            <div className="mt-4">
+              <ExerciseDatabasePanel
+                query={exerciseSearchQuery}
+                onQueryChange={setExerciseSearchQuery}
+                tab={exerciseTab}
+                onTabChange={setExerciseTab}
+                category={selectedExerciseCategory}
+                onCategoryChange={setSelectedExerciseCategory}
+                equipment={selectedEquipmentTag}
+                onEquipmentChange={setSelectedEquipmentTag}
+                muscle={selectedMuscleTag}
+                onMuscleChange={setSelectedMuscleTag}
+                groupedResults={groupedExerciseResults}
+                favorites={favoriteExerciseIds}
+                onToggleFavorite={toggleFavoriteExercise}
+                onSelectExercise={selectExerciseFromLibrary}
+                recentExercises={recentExercises}
+                dropdownResults={dropdownResults}
+                recentSearches={recentExerciseSearches}
+                onPickRecentSearch={setExerciseSearchQuery}
+                categoryOptions={["All", ...categoryFilterOrder]}
+                equipmentOptions={["All", ...EQUIPMENT_TAGS]}
+                muscleOptions={muscleOptions}
+              />
+            </div>
+          </SectionCard>
+          <SectionCard eyebrow="Strength logger" title="Add a set">
+            <div className="grid gap-3">
               <input
                 type="text"
                 value={exerciseName}
                 onChange={(event) => handleExerciseNameChange(event.target.value)}
-                placeholder="Workout or exercise"
-                list="exercise-autofill-list"
+                placeholder="Selected strength exercise"
                 className="rounded-[22px] border border-white/10 bg-white/[0.05] px-4 py-3 text-sm text-white outline-none placeholder:text-zinc-500"
               />
-              <datalist id="exercise-autofill-list">
-                {exerciseCatalog.map((exercise) => (
-                  <option key={exercise.name} value={exercise.name} />
-                ))}
-              </datalist>
-              {matchedExercise ? (
+              {matchedExercise && !matchedExercise.isCardio ? (
                 <div className="rounded-[22px] border border-white/10 bg-white/[0.04] p-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <p className="text-sm font-semibold text-white">{matchedExercise.name}</p>
-                      <p className="mt-1 text-sm text-zinc-400">{matchedExercise.focus}</p>
+                      <p className="mt-1 text-sm text-zinc-400">
+                        Primary: {matchedExercise.primaryMuscle}
+                        {matchedExercise.secondaryMuscles.length ? ` | Secondary: ${matchedExercise.secondaryMuscles.join(", ")}` : ""}
+                      </p>
                     </div>
                     <span className="rounded-full bg-emerald-400/15 px-3 py-1 text-xs font-medium uppercase tracking-[0.18em] text-emerald-300">
-                      {matchedExercise.equipment}
+                      {matchedExercise.category}
                     </span>
                   </div>
-                  <p className="mt-3 text-xs uppercase tracking-[0.18em] text-zinc-500">
-                    Targets {matchedExercise.primaryMuscles.join(", ")}
-                  </p>
-                  <p className="mt-2 text-sm text-zinc-400">
-                    Starter autofill: {matchedExercise.defaultSets} set x {matchedExercise.defaultReps} reps
-                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {matchedExercise.equipment.map((item) => (
+                      <PriceBadge key={item} label={item} tone="muted" />
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={clearStrengthExerciseSelection}
+                    className="mt-4 rounded-[18px] border border-white/10 bg-black/20 px-4 py-2 text-xs font-medium text-zinc-200"
+                  >
+                    Remove exercise
+                  </button>
                 </div>
               ) : null}
-              <div className="flex flex-wrap gap-2">
-                {(exerciseName.trim() ? exerciseSuggestions : quickExerciseSuggestions).map((exercise) => (
-                  <button
-                    key={exercise.name}
-                    type="button"
-                    onClick={() => applyExerciseSuggestion(exercise)}
-                    className="rounded-full border border-white/10 bg-black/20 px-3 py-2 text-xs font-medium text-zinc-200"
-                  >
-                    {exercise.name}
-                  </button>
-                ))}
-              </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <input
                   type="number"
@@ -1041,7 +1492,7 @@ function App() {
                   step="1"
                   value={liftSets}
                   onChange={(event) => setLiftSets(event.target.value)}
-                  placeholder="Sets (opt)"
+                  placeholder="Sets"
                   className="rounded-[22px] border border-white/10 bg-white/[0.05] px-4 py-3 text-sm text-white outline-none placeholder:text-zinc-500"
                 />
                 <input
@@ -1063,9 +1514,6 @@ function App() {
                   className="rounded-[22px] border border-white/10 bg-white/[0.05] px-4 py-3 text-sm text-white outline-none placeholder:text-zinc-500"
                 />
               </div>
-              <p className="text-xs leading-6 text-zinc-500">
-                Exercise autofill suggestions are seeded from Mayo Clinic strength and core exercise guidance. Default set and rep values are starter suggestions for faster logging.
-              </p>
               <button
                 type="button"
                 onClick={addWorkoutEntry}
@@ -1075,46 +1523,93 @@ function App() {
               </button>
             </div>
           </SectionCard>
-          <SectionCard eyebrow="Recent sets" title="Workout tracker">
-            {workoutLog.length ? (
-              <div className="space-y-3">
-                {workoutLog.slice(0, 8).map((entry) => (
-                  <div key={entry.id} className="rounded-[22px] border border-white/8 bg-white/[0.04] p-4">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-base font-semibold text-white" title={entry.exercise}>
-                          {abbreviateText(entry.exercise, 42)}
-                        </p>
-                        <p className="mt-1 break-words text-sm text-zinc-400">
-                          {entry.sets} set{entry.sets === 1 ? "" : "s"} x {entry.weight} lb x {entry.reps} reps
-                        </p>
-                        <p className="mt-1 truncate text-xs uppercase tracking-[0.18em] text-emerald-300" title={entry.workoutDay}>
-                          {abbreviateText(entry.workoutDay, 18)}
-                        </p>
-                        <p className="mt-1 text-xs text-zinc-500">{formatShortDateTime(entry.loggedDate, entry.loggedTime)}</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => removeWorkoutEntry(entry.id)}
-                        className="rounded-[18px] border border-white/10 bg-black/20 px-3 py-2 text-xs font-medium text-zinc-300"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="rounded-[22px] border border-dashed border-white/10 bg-white/[0.03] p-4 text-sm leading-7 text-zinc-400">
-                No workout sets logged yet. Add your first entry above to start tracking weekly volume and reps.
-              </div>
-            )}
+          <SectionCard eyebrow="Cardio logger" title="Track steps, miles, and time">
+            <CardioEntryForm
+              selectedExercise={selectedExercise && selectedExercise.isCardio ? selectedExercise : cardioDraft.exerciseId ? exerciseMap.get(cardioDraft.exerciseId) ?? null : null}
+              draft={cardioDraft}
+              presets={cardioQuickPresets}
+              onDraftChange={updateCardioDraft}
+              onApplyPreset={applyCardioPreset}
+              onClear={clearCardioExerciseSelection}
+              onSubmit={addCardioEntry}
+            />
           </SectionCard>
-          <SectionCard eyebrow="Progress summary" title="Strength momentum">
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <StatCard label="Sets Logged" value={`${totalSetsLogged}`} detail="All-time workout sets saved on this device" icon={Dumbbell} />
+          <SectionCard eyebrow="Recent activity" title="Strength and cardio history">
+            <div className="grid gap-4 xl:grid-cols-2">
+              <div className="space-y-3">
+                <p className="text-xs uppercase tracking-[0.18em] text-zinc-500">Recent sets</p>
+                {workoutLog.length ? (
+                  workoutLog.slice(0, 6).map((entry) => (
+                    <div key={entry.id} className="rounded-[22px] border border-white/8 bg-white/[0.04] p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-base font-semibold text-white" title={entry.exercise}>
+                            {abbreviateText(entry.exercise, 42)}
+                          </p>
+                          <p className="mt-1 break-words text-sm text-zinc-400">
+                            {entry.sets} set{entry.sets === 1 ? "" : "s"} x {entry.weight} lb x {entry.reps} reps
+                          </p>
+                          <p className="mt-1 truncate text-xs uppercase tracking-[0.18em] text-emerald-300" title={entry.workoutDay}>
+                            {abbreviateText(entry.workoutDay, 18)}
+                          </p>
+                          <p className="mt-1 text-xs text-zinc-500">{formatShortDateTime(entry.loggedDate, entry.loggedTime)}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeWorkoutEntry(entry.id)}
+                          className="rounded-[18px] border border-white/10 bg-black/20 px-3 py-2 text-xs font-medium text-zinc-300"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-[22px] border border-dashed border-white/10 bg-white/[0.03] p-4 text-sm leading-7 text-zinc-400">
+                    No strength sets logged yet. Pick an exercise from the database and add your first set.
+                  </div>
+                )}
+              </div>
+              <div className="space-y-3">
+                <p className="text-xs uppercase tracking-[0.18em] text-sky-200/70">Recent cardio</p>
+                {cardioLog.length ? (
+                  cardioLog.slice(0, 6).map((entry) => (
+                    <div key={entry.id} className="rounded-[22px] border border-sky-400/15 bg-sky-400/8 p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-base font-semibold text-white">{entry.exerciseName}</p>
+                          <p className="mt-1 break-words text-sm text-slate-200/80">
+                            {entry.durationMinutes ? `${entry.durationMinutes} min` : "No time"} | {entry.steps ? `${entry.steps.toLocaleString()} steps` : "No steps"} | {entry.miles ? formatMiles(entry.miles) : "No miles"}
+                          </p>
+                          <p className="mt-1 text-xs uppercase tracking-[0.18em] text-sky-200/80">
+                            {entry.pace ? `${entry.pace} pace` : "Pace optional"} | {formatCalories(entry.estimatedCaloriesBurned)}
+                          </p>
+                          <p className="mt-1 text-xs text-zinc-500">{formatShortDateTime(entry.loggedDate, entry.loggedTime)}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeCardioEntry(entry.id)}
+                          className="rounded-[18px] border border-white/10 bg-black/20 px-3 py-2 text-xs font-medium text-zinc-300"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-[22px] border border-dashed border-sky-300/20 bg-sky-400/8 p-4 text-sm leading-7 text-sky-100/75">
+                    No cardio entries yet. Open the cardio box, choose an activity, and log steps, miles, or time.
+                  </div>
+                )}
+              </div>
+            </div>
+          </SectionCard>
+          <SectionCard eyebrow="Progress summary" title="Strength and cardio momentum">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <StatCard label="Sets Logged" value={`${totalSetsLogged}`} detail="All-time strength sets saved on this device" icon={Dumbbell} />
               <StatCard label="Weekly Volume" value={`${weeklyWeightLifted.toLocaleString()} lb`} detail="Weight x reps over the last 7 days" icon={Apple} emphasis="accent" />
-              <StatCard label="Weekly Reps" value={`${weeklyReps.toLocaleString()}`} detail="Useful for tracking training load at a glance" icon={Repeat} />
+              <StatCard label="Weekly Cardio" value={formatMiles(weeklyCardioMiles)} detail={`${weeklyCardioSteps.toLocaleString()} steps in the last 7 days`} icon={Footprints} />
+              <StatCard label="Calories Burned" value={formatCalories(weeklyCardioCalories)} detail="Estimated from cardio sessions with time logged" icon={Flame} />
             </div>
             <div className="mt-4 grid gap-3 md:grid-cols-2">
               {workoutSplit.map((workout) => (
@@ -1126,6 +1621,9 @@ function App() {
                   day={workout.day}
                 />
               ))}
+            </div>
+            <div className="mt-4 rounded-[22px] border border-sky-400/15 bg-sky-400/8 p-4 text-sm text-sky-100/80">
+              The cardio section stays separate from lifts, but both feed the same workout dashboard so future plans, analytics, and recommendations can build on one shared exercise database.
             </div>
           </SectionCard>
         </div>
@@ -1430,10 +1928,11 @@ function App() {
     );
   }
 
-  if (!isReady) return <div className="flex min-h-screen items-center justify-center text-sm text-zinc-400">Loading Vitalyx...</div>;
-  if (!user || !appData) return <AuthScreen onSignIn={handleSignIn} onRegister={handleRegister} errorMessage={authError} />;
-
   const meta = tabMeta[activeTab];
+  if (!isReady) return <div className="flex min-h-screen items-center justify-center text-sm text-zinc-400">Loading Vitalyx...</div>;
+
+  const authenticatedUser = user;
+
   return (
     <>
       <input
@@ -1449,7 +1948,23 @@ function App() {
           event.currentTarget.value = "";
         }}
       />
-      <MobileAppShell activeTab={activeTab} onNavigate={setActiveTab} title={meta.title} subtitle={meta.subtitle} searchValue={searchValue} onSearchChange={setSearchValue} user={user}>{renderScreen()}</MobileAppShell>
+      <ProtectedRoute
+        isAuthenticated={Boolean(user && appData)}
+        fallback={
+          <AuthScreen
+            onSignIn={handleSignIn}
+            onRegister={handleRegister}
+            onForgotPassword={handleForgotPassword}
+            onResetPassword={handleResetPassword}
+            errorMessage={authError}
+            infoMessage={authInfo}
+            loading={authLoading}
+            initialMode={authMode}
+          />
+        }
+      >
+        <MobileAppShell activeTab={activeTab} onNavigate={setActiveTab} title={meta.title} subtitle={meta.subtitle} searchValue={searchValue} onSearchChange={setSearchValue} user={authenticatedUser!}>{renderScreen()}</MobileAppShell>
+      </ProtectedRoute>
     </>
   );
 }

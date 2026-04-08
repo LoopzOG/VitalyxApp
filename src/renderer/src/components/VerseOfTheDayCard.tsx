@@ -33,6 +33,9 @@ export function VerseOfTheDayCard({ verse, isLoading }: VerseOfTheDayCardProps) 
                 <span className="rounded-full bg-emerald-400/15 px-3 py-1 text-xs font-medium uppercase tracking-[0.18em] text-emerald-300">
                   {verse.reference}
                 </span>
+                <span className="rounded-full border border-emerald-300/20 bg-emerald-300/10 px-3 py-1 text-xs font-medium uppercase tracking-[0.18em] text-emerald-100">
+                  {verse.translation}
+                </span>
                 {verse.themes.map((theme) => (
                   <span
                     key={theme}
@@ -42,10 +45,11 @@ export function VerseOfTheDayCard({ verse, isLoading }: VerseOfTheDayCardProps) 
                   </span>
                 ))}
               </div>
+              <p className="mt-4 text-xs leading-6 text-zinc-500">{verse.attribution}</p>
             </>
           ) : (
             <p className="text-sm leading-7 text-zinc-400">
-              Today&apos;s verse could not be loaded right now, but the section will try again on the next refresh.
+              Today&apos;s NIV verse could not be loaded right now. Add the API.Bible credentials for NIV, then refresh and the section will try again.
             </p>
           )}
         </div>

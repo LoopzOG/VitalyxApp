@@ -49,7 +49,7 @@ export function VerseOfTheDayCard({ verse, isLoading }: VerseOfTheDayCardProps) 
             </>
           ) : (
             <p className="text-sm leading-7 text-zinc-400">
-              Today&apos;s NIV verse could not be loaded right now. Add the API.Bible credentials for NIV, then refresh and the section will try again.
+              Today&apos;s verse could not be loaded right now, but the section will try again on the next refresh.
             </p>
           )}
         </div>

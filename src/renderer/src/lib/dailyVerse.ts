@@ -1,4 +1,6 @@
-export type VerseTheme = "Physical Health" | "Mental Health" | "Spiritual Strength";
+import { getDailyVerseSelection, type VerseTheme } from "../../../shared/dailyVerseSelection";
+
+export type { VerseTheme };
 
 export type DailyVerse = {
   id: string;
@@ -6,17 +8,46 @@ export type DailyVerse = {
   text: string;
   themes: VerseTheme[];
   priorityScore: number;
-  translation: "NIV";
+  translation: "KJV";
   attribution: string;
 };
 
-export async function getDailyVerse(dateKey: string) {
-  const response = await fetch(`/api/daily-verse?date=${encodeURIComponent(dateKey)}`);
+let verseTextPromise: Promise<Record<string, string>> | null = null;
 
-  if (!response.ok) {
-    const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-    throw new Error(payload?.error || "Unable to load the NIV verse right now.");
+function cleanVerseText(text: string) {
+  return text
+    .replace(/^#\s*/, "")
+    .replace(/\[([^\]]+)\]/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+async function loadVerseTextMap() {
+  if (!verseTextPromise) {
+    verseTextPromise = import("kjv/json/verses-1769.json").then((module) => module.default as Record<string, string>);
   }
 
-  return (await response.json()) as DailyVerse;
+  return verseTextPromise;
+}
+
+export async function getDailyVerse(dateKey: string) {
+  const [selection, verseMap] = await Promise.all([
+    getDailyVerseSelection(dateKey),
+    loadVerseTextMap(),
+  ]);
+
+  const verseText = verseMap[selection.reference];
+  if (!verseText) {
+    throw new Error("Unable to find today's verse text.");
+  }
+
+  return {
+    id: selection.id,
+    reference: selection.reference,
+    text: cleanVerseText(verseText),
+    themes: selection.themes,
+    priorityScore: selection.priorityScore,
+    translation: "KJV",
+    attribution: "Scripture text from the public domain King James Version.",
+  } satisfies DailyVerse;
 }

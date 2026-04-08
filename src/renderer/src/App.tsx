@@ -65,7 +65,7 @@ import { hasSupabaseConfig } from "@/lib/supabase";
 import type { GroceryList, GroceryListItem, GroceryUnit, PriceRecord } from "@/lib/groceryTypes";
 import type { MobileTab } from "@/components/BottomNav";
 const tabMeta: Record<MobileTab, { title: string; subtitle: string }> = {
-  home: { title: "Vitalyx", subtitle: "Blank by default, customizable every day." },
+  home: { title: "Vitalyx", subtitle: "Building your Wealth starts with your Health" },
   meals: { title: "Meals", subtitle: "Scan, search, or snap food and confirm the nutrition before saving." },
   track: { title: "Track", subtitle: "Keep workout logging simple and fast." },
   more: { title: "More", subtitle: "Track grocery prices, compare stores, and manage your setup." },

@@ -1297,7 +1297,7 @@ function App() {
 
     if (!result) {
       setNutritionFeedback("Barcode detected, but no nutrition match was found yet. Try better lighting or enter the barcode manually.");
-      throw new Error("Nutrition barcode lookup did not return a product.");
+      return;
     }
 
     setPendingEntries([result]);

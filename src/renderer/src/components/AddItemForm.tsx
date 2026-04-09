@@ -91,7 +91,7 @@ export function AddItemForm({
 
       if (!result) {
         setBarcodeFeedback("UPC detected, but no product match was found yet. Try another angle, better lighting, or use manual entry.");
-        throw new Error("UPC lookup did not return a product.");
+        return;
       }
 
       setName(result.name);

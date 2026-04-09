@@ -76,19 +76,15 @@ export function LiveBarcodeScanner({ open, onDetected, onClose }: LiveBarcodeSca
             }
 
             handlingDetectionRef.current = true;
-            setStatus(`Detected ${cleaned}. Loading item...`);
+            setStatus(`Detected ${cleaned}. Closing scanner...`);
 
-            try {
-              await onDetected(cleaned);
-              if (!cancelled) {
-                onClose();
-              }
-            } catch {
-              handlingDetectionRef.current = false;
-              if (!cancelled) {
-                setStatus("UPC detected, but lookup failed. Try again or enter the barcode manually.");
-              }
+            if (!cancelled) {
+              onClose();
             }
+
+            Promise.resolve(onDetected(cleaned)).catch(() => {
+              // The parent form handles lookup fallback and messaging after the scanner closes.
+            });
           },
           () => {
             if (!cancelled && !handlingDetectionRef.current) {

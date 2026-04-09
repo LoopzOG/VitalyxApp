@@ -7,6 +7,10 @@ type ProfileRecord = {
   display_name: string;
   role: SessionUser["role"];
   subscription_tier: SessionUser["subscriptionTier"];
+  stripe_customer_id?: string | null;
+  stripe_subscription_id?: string | null;
+  stripe_price_id?: string | null;
+  subscription_status?: string | null;
   created_at: string;
 };
 

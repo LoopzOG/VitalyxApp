@@ -43,7 +43,7 @@ import {
   type WorkoutPlanEntry,
 } from "@/lib/storage";
 import { applyProfileToSessionUser, fetchUserAppData, fetchUserProfile, saveUserAppData, updateUserAccessProfile } from "@/lib/backendAppData";
-import { getRestoredSessionUser, sendPasswordReset, signInWithPassword, signOutUser, signUpWithPassword, subscribeToAuthChanges, updatePassword } from "@/lib/backendAuth";
+import { getAccessToken, getRestoredSessionUser, sendPasswordReset, signInWithPassword, signOutUser, signUpWithPassword, subscribeToAuthChanges, updatePassword } from "@/lib/backendAuth";
 import { createInitialGroceryLists } from "@/lib/groceryState";
 import {
   cardioQuickPresets,
@@ -61,6 +61,7 @@ import { formatExerciseSearch, getExerciseMap, getMuscleOptions, groupExerciseRe
 import { formatMacro, parseMacroString, parseNumber } from "@/lib/macroEstimator";
 import { nutritionService, type NutritionEntry } from "@/lib/nutritionService";
 import { getDailyVerse, type DailyVerse } from "@/lib/dailyVerse";
+import { startPremiumCheckout } from "@/lib/billing";
 import { hasSupabaseConfig } from "@/lib/supabase";
 import type { GroceryList, GroceryListItem, GroceryUnit, PriceRecord } from "@/lib/groceryTypes";
 import type { MobileTab } from "@/components/BottomNav";
@@ -227,6 +228,28 @@ function hydrateGroceryLists(lists: GroceryList[], manualPriceRecords: PriceReco
   }));
 }
 
+function filterVisibleGroceryPrices(items: GroceryListItem[], isPremiumSubscriber: boolean) {
+  if (isPremiumSubscriber) {
+    return items;
+  }
+
+  return items.map((item) => ({
+    ...item,
+    latestPrices: item.latestPrices.filter((record) => record.source === "manual"),
+  }));
+}
+
+function getManualPriceHistory(itemName: string, storeName: string, manualPriceRecords: PriceRecord[]) {
+  return manualPriceRecords
+    .filter((record) => {
+      const sameItem =
+        productMatchingService.normalizeItemName(record.itemName) === productMatchingService.normalizeItemName(itemName);
+      const sameStore = !storeName || record.storeName === storeName;
+      return sameItem && sameStore;
+    })
+    .sort((a, b) => new Date(a.checkedAt).getTime() - new Date(b.checkedAt).getTime());
+}
+
 function App() {
   const [activeTab, setActiveTab] = useState<MobileTab>("home");
   const [user, setUser] = useState<SessionUser | null>(null);
@@ -270,6 +293,7 @@ function App() {
   const [photoLabel, setPhotoLabel] = useState("");
   const [pendingEntries, setPendingEntries] = useState<NutritionEntry[]>([]);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [nutritionFeedback, setNutritionFeedback] = useState<string | null>(null);
   const [editingMealId, setEditingMealId] = useState<string | null>(null);
   const [selectedGroceryItemId, setSelectedGroceryItemId] = useState<string | null>(null);
   const [showStoreComparison, setShowStoreComparison] = useState(false);
@@ -277,6 +301,7 @@ function App() {
   const [promoCodeInput, setPromoCodeInput] = useState("");
   const [dailyVerse, setDailyVerse] = useState<DailyVerse | null>(null);
   const [dailyVerseLoading, setDailyVerseLoading] = useState(true);
+  const [billingLoadingPlan, setBillingLoadingPlan] = useState<"monthly" | "yearly" | null>(null);
   const photoInputRef = useRef<HTMLInputElement | null>(null);
   const hasLoadedRemoteData = useRef(false);
 
@@ -314,6 +339,28 @@ function App() {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const billingState = params.get("billing");
+    if (!billingState) {
+      return;
+    }
+
+    if (billingState === "success") {
+      setFeedback("Stripe checkout completed. Premium access will appear as soon as the subscription confirmation finishes.");
+    }
+
+    if (billingState === "cancelled") {
+      setFeedback("Stripe checkout was cancelled. You can restart monthly or yearly checkout whenever you're ready.");
+    }
+
+    params.delete("billing");
+    params.delete("session_id");
+    const nextSearch = params.toString();
+    const nextUrl = `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}${window.location.hash}`;
+    window.history.replaceState({}, "", nextUrl);
   }, []);
 
   useEffect(() => {
@@ -446,6 +493,7 @@ function App() {
   );
   const todayIndex = Math.max(normalizedPlanner.findIndex((day) => day.day === todayLabel()), 0);
   const safeDayIndex = Math.min(dayIndex, Math.max(normalizedPlanner.length - 1, 0));
+  const isPremiumSubscriber = user?.subscriptionTier === "premium";
   const todayMeals = normalizedPlanner[todayIndex]?.meals ?? [];
   const totals = mealTotals(todayMeals);
   const activeGroceryList = groceryLists[0] ?? createInitialGroceryLists()[0];
@@ -453,28 +501,36 @@ function App() {
     ...activeGroceryList,
     items: groceryPriceService.getPricesForList(activeGroceryList.items, manualPriceRecords),
   };
-  const comparisonResults = storeComparisonService.calculateStoreTotals(pricedGroceryList);
-  const cheapestStoreResult = storeComparisonService.getCheapestStore(pricedGroceryList);
-  const perItemBestPrices = storeComparisonService.getPerItemBestPrices(pricedGroceryList);
+  const visibleGroceryList = {
+    ...pricedGroceryList,
+    items: filterVisibleGroceryPrices(pricedGroceryList.items, isPremiumSubscriber),
+  };
+  const comparisonResults = isPremiumSubscriber ? storeComparisonService.calculateStoreTotals(pricedGroceryList) : [];
+  const cheapestStoreResult = isPremiumSubscriber ? storeComparisonService.getCheapestStore(pricedGroceryList) : null;
+  const perItemBestPrices = isPremiumSubscriber ? storeComparisonService.getPerItemBestPrices(pricedGroceryList) : [];
   const mixAndMatchTotal = perItemBestPrices.reduce((total, entry) => total + entry.totalCost, 0);
   const selectedGroceryItem =
-    pricedGroceryList.items.find((item) => item.id === selectedGroceryItemId) ?? pricedGroceryList.items[0] ?? null;
+    visibleGroceryList.items.find((item) => item.id === selectedGroceryItemId) ?? visibleGroceryList.items[0] ?? null;
   const selectedStoreName = selectedGroceryItem?.preferredStore ?? selectedGroceryItem?.latestPrices[0]?.storeName ?? "";
   const selectedItemHistory = selectedGroceryItem
-    ? groceryPriceService.getPriceHistory(selectedGroceryItem.name, selectedStoreName, manualPriceRecords)
+    ? isPremiumSubscriber
+      ? groceryPriceService.getPriceHistory(selectedGroceryItem.name, selectedStoreName, manualPriceRecords)
+      : getManualPriceHistory(selectedGroceryItem.name, selectedStoreName, manualPriceRecords)
     : [];
   const weeklyEstimate = cheapestStoreResult?.totalCost ?? mixAndMatchTotal;
-  const stapleChanges = ["Chicken breast", "Eggs", "Rice"]
-    .map((name) => {
-      const history = groceryPriceService.getPriceHistory(name, cheapestStoreResult?.storeName ?? "Walmart", manualPriceRecords);
-      if (history.length < 2) return null;
-      const latest = history.at(-1)?.price ?? 0;
-      const prior = history.at(-2)?.price ?? 0;
-      const delta = latest - prior;
-      const prefix = delta > 0 ? "+" : "";
-      return { item: name, change: `${prefix}$${Math.abs(delta).toFixed(2)}` };
-    })
-    .filter((entry): entry is { item: string; change: string } => Boolean(entry));
+  const stapleChanges = isPremiumSubscriber
+    ? ["Chicken breast", "Eggs", "Rice"]
+        .map((name) => {
+          const history = groceryPriceService.getPriceHistory(name, cheapestStoreResult?.storeName ?? "Walmart", manualPriceRecords);
+          if (history.length < 2) return null;
+          const latest = history.at(-1)?.price ?? 0;
+          const prior = history.at(-2)?.price ?? 0;
+          const delta = latest - prior;
+          const prefix = delta > 0 ? "+" : "";
+          return { item: name, change: `${prefix}$${Math.abs(delta).toFixed(2)}` };
+        })
+        .filter((entry): entry is { item: string; change: string } => Boolean(entry))
+    : [];
   const exerciseMap = useMemo(() => getExerciseMap(exerciseDatabase), []);
   const selectedExercise = selectedExerciseId ? exerciseMap.get(selectedExerciseId) ?? null : null;
   const matchedExercise = useMemo(() => {
@@ -1053,15 +1109,35 @@ function App() {
       return;
     }
 
+    await handleStartPremiumCheckout("monthly");
+  }
+
+  async function handleStartPremiumCheckout(interval: "monthly" | "yearly") {
+    if (!user) {
+      return;
+    }
+
+    if (user.subscriptionTier === "premium") {
+      setFeedback("Premium is already active on this account.");
+      return;
+    }
+
+    setBillingLoadingPlan(interval);
+
     try {
-      const nextProfile = await updateUserAccessProfile(user.id, {
-        subscription_tier: "premium",
+      const accessToken = await getAccessToken();
+      if (!accessToken) {
+        throw new Error("Sign in again before starting Stripe checkout.");
+      }
+
+      await startPremiumCheckout({
+        accessToken,
+        interval,
       });
-      const nextUser = applyProfileToSessionUser(user, nextProfile);
-      setUser(nextUser);
-      setFeedback("Premium unlocked. UPC camera scanning is now available on this account.");
     } catch (error) {
-      setFeedback(getErrorMessage(error, "Unable to update the subscription right now."));
+      setFeedback(getErrorMessage(error, "Unable to start Stripe checkout right now."));
+    } finally {
+      setBillingLoadingPlan(null);
     }
   }
 
@@ -1098,7 +1174,7 @@ function App() {
 
   function resetDetectionState() {
     setPendingEntries([]);
-    setFeedback(null);
+    setNutritionFeedback(null);
     setEditingMealId(null);
   }
 
@@ -1107,14 +1183,14 @@ function App() {
     try {
       if (loggingMethod === "barcode") {
         result = await nutritionService.fromBarcode(barcodeValue);
-        setFeedback(
+        setNutritionFeedback(
           result
             ? "Open Food Facts nutrition found. Double-check serving before saving."
             : "No product was found for that barcode, or nutrition values were incomplete.",
         );
       } else if (loggingMethod === "search") {
         result = await nutritionService.fromSearch(foodSearchQuery);
-        setFeedback(
+        setNutritionFeedback(
           result
             ? "Search matched a food profile. Review and edit if needed before saving."
             : "No food match found. Try wording like '2 eggs' or '6 oz chicken breast'.",
@@ -1124,14 +1200,14 @@ function App() {
       setPendingEntries(result ? (Array.isArray(result) ? result : [result]) : []);
     } catch (error) {
       setPendingEntries([]);
-      setFeedback(error instanceof Error ? error.message : "Nutrition lookup failed. Please try again.");
+      setNutritionFeedback(error instanceof Error ? error.message : "Nutrition lookup failed. Please try again.");
     }
   }
 
   async function handlePhotoSelected(file: File) {
     const result = await nutritionService.fromPhoto(file);
     setPhotoLabel(file.name);
-    setFeedback(
+    setNutritionFeedback(
       result.length
         ? "Photo results are estimates. Review each item and portion before saving."
         : "No food estimates were returned from this photo.",
@@ -1202,7 +1278,7 @@ function App() {
     setLoggingMethod("search");
     setPendingEntries([mealToNutritionEntry(meal)]);
     setEditingMealId(meal.id ?? meal.title);
-    setFeedback("Edit the detected nutrition, then save to update this food entry.");
+    setNutritionFeedback("Edit the detected nutrition, then save to update this food entry.");
   }
 
   function removeMeal(mealId: string) {
@@ -1367,7 +1443,7 @@ function App() {
           onEntryChange={handleEntryChange}
           onSaveEntries={saveDetectedEntries}
           onCancelEntries={resetDetectionState}
-          feedback={feedback}
+          feedback={nutritionFeedback}
           editingMealId={editingMealId}
           totals={dayTotals}
           meals={day.meals}
@@ -1682,34 +1758,42 @@ function App() {
     return (
       <div className="space-y-5">
         <SectionCard eyebrow="Dashboard widget" title="Grocery price tracking">
-          <GroceryDashboardWidget
-            weeklyEstimate={weeklyEstimate}
-            cheapestStore={cheapestStoreResult?.storeName ?? "No match yet"}
-            cheapestTotal={cheapestStoreResult?.totalCost ?? 0}
-            stapleChanges={stapleChanges.length ? stapleChanges : [{ item: "Staples", change: "awaiting list data" }]}
-          />
+          {isPremiumSubscriber ? (
+            <GroceryDashboardWidget
+              weeklyEstimate={weeklyEstimate}
+              cheapestStore={cheapestStoreResult?.storeName ?? "No match yet"}
+              cheapestTotal={cheapestStoreResult?.totalCost ?? 0}
+              stapleChanges={stapleChanges.length ? stapleChanges : [{ item: "Staples", change: "awaiting list data" }]}
+            />
+          ) : (
+            <div className="rounded-[24px] border border-emerald-300/15 bg-emerald-400/8 p-4 text-sm leading-7 text-zinc-200">
+              Free users can build a grocery list, add items by manual barcode entry, and save their own store prices. Premium unlocks full store comparison and best-cart estimates.
+            </div>
+          )}
         </SectionCard>
 
         <GroceryListCard
-          name={pricedGroceryList.name}
-          itemCount={pricedGroceryList.items.length}
-          totalLabel={cheapestStoreResult ? formatMoney(cheapestStoreResult.totalCost) : "$0.00"}
+          name={visibleGroceryList.name}
+          itemCount={visibleGroceryList.items.length}
+          totalLabel={isPremiumSubscriber && cheapestStoreResult ? formatMoney(cheapestStoreResult.totalCost) : "Manual tracking"}
           subtitle={
-            cheapestStoreResult
+            isPremiumSubscriber && cheapestStoreResult
               ? `${cheapestStoreResult.storeName} is currently the cheapest full-list option.`
-              : "Add items to see price estimates across stores."
+              : isPremiumSubscriber
+                ? "Add items to see price estimates across stores."
+                : "Save groceries and your own price checks. Store comparison unlocks with premium."
           }
         >
           <AddItemForm
             onAdd={addGroceryItem}
             onBarcodeLookup={(barcode) => groceryPriceService.lookupBarcode(barcode)}
-            isPremiumSubscriber={user?.subscriptionTier === "premium"}
+            isPremiumSubscriber={isPremiumSubscriber}
             onUpgradeToPremium={handleUpgradeToPremium}
           />
 
-          {pricedGroceryList.items.length ? (
+          {visibleGroceryList.items.length ? (
             <div className="space-y-3">
-              {pricedGroceryList.items.map((item) => {
+              {visibleGroceryList.items.map((item) => {
                 const bestRecord = [...item.latestPrices].sort(
                   (a, b) => groceryPriceService.estimateItemTotal(item, a) - groceryPriceService.estimateItemTotal(item, b),
                 )[0];
@@ -1724,6 +1808,7 @@ function App() {
                       bestStoreLabel={bestRecord ? bestRecord.storeName : "No store match"}
                       lastUpdatedLabel={relativeDateLabel(bestRecord?.checkedAt)}
                       hasMatch={Boolean(bestRecord)}
+                      canComparePrices={isPremiumSubscriber}
                       onSelect={() => setSelectedGroceryItemId(item.id)}
                     />
                     <button
@@ -1739,20 +1824,29 @@ function App() {
             </div>
           ) : (
             <div className="rounded-[22px] border border-dashed border-white/10 bg-white/[0.03] p-4 text-sm leading-7 text-zinc-400">
-              Your list is empty. Add staples like chicken breast, eggs, rice, greek yogurt, ground beef, oats, or broccoli to start comparing stores.
+              Your list is empty. Add staples like chicken breast, eggs, rice, greek yogurt, ground beef, oats, or broccoli to start building your grocery log.
             </div>
           )}
 
           <button
             type="button"
-            onClick={() => setShowStoreComparison((current) => !current)}
-            className="w-full rounded-[22px] bg-emerald-400 px-4 py-3 text-sm font-semibold text-zinc-950"
+            onClick={() => {
+              if (!isPremiumSubscriber) {
+                setFeedback("Store-by-store grocery comparison is part of Premium. Free users can still add groceries and save manual prices.");
+                handleUpgradeToPremium();
+                return;
+              }
+              setShowStoreComparison((current) => !current);
+            }}
+            className={`w-full rounded-[22px] px-4 py-3 text-sm font-semibold ${
+              isPremiumSubscriber ? "bg-emerald-400 text-zinc-950" : "border border-white/10 bg-black/20 text-zinc-100"
+            }`}
           >
-            {showStoreComparison ? "Hide store comparison" : "Compare stores"}
+            {isPremiumSubscriber ? (showStoreComparison ? "Hide store comparison" : "Compare stores") : "Unlock store comparison"}
           </button>
         </GroceryListCard>
 
-        {showStoreComparison && pricedGroceryList.items.length ? (
+        {showStoreComparison && isPremiumSubscriber && pricedGroceryList.items.length ? (
           <SectionCard eyebrow="Store comparison" title="Best cart options">
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
@@ -1847,11 +1941,19 @@ function App() {
                     ))
                   ) : (
                     <div className="rounded-[20px] border border-dashed border-white/10 bg-black/20 p-4 text-sm text-zinc-400">
-                      No store prices were matched for this item yet. Try a clearer grocery name or add your own manual price.
+                      {isPremiumSubscriber
+                        ? "No store prices were matched for this item yet. Try a clearer grocery name or add your own manual price."
+                        : "No manual prices saved yet. Add your own price update to start tracking this item."}
                     </div>
                   )}
                 </div>
               </div>
+
+              {!isPremiumSubscriber ? (
+                <div className="rounded-[20px] border border-emerald-300/15 bg-emerald-400/8 p-4 text-sm text-zinc-200">
+                  Premium adds automatic store comparison and best-price suggestions. Your manual price checks stay available on the free plan.
+                </div>
+              ) : null}
 
               <PriceHistoryCard
                 itemName={selectedGroceryItem.name}
@@ -1873,7 +1975,7 @@ function App() {
                     {user?.subscriptionTier === "premium" ? "Premium active" : "Free plan"}
                   </p>
                   <p className="mt-1 text-sm text-zinc-400">
-                    Manual barcode entry is free. Premium unlocks UPC camera scanning from the grocery add flow.
+                    Premium unlocks UPC camera scanning through Stripe billing at $9.99 monthly or $59.99 yearly.
                   </p>
                 </div>
                 {user?.subscriptionTier === "premium" ? (
@@ -1881,13 +1983,24 @@ function App() {
                     Premium
                   </span>
                 ) : (
-                  <button
-                    type="button"
-                    onClick={handleUpgradeToPremium}
-                    className="rounded-[18px] bg-emerald-400 px-4 py-2 text-sm font-semibold text-zinc-950"
-                  >
-                    Upgrade
-                  </button>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <button
+                      type="button"
+                      onClick={() => void handleStartPremiumCheckout("monthly")}
+                      disabled={billingLoadingPlan !== null}
+                      className="rounded-[18px] bg-emerald-400 px-4 py-2 text-sm font-semibold text-zinc-950 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {billingLoadingPlan === "monthly" ? "Starting..." : "$9.99 / month"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void handleStartPremiumCheckout("yearly")}
+                      disabled={billingLoadingPlan !== null}
+                      className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-2 text-sm font-medium text-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {billingLoadingPlan === "yearly" ? "Starting..." : "$59.99 / year"}
+                    </button>
+                  </div>
                 )}
               </div>
             </div>

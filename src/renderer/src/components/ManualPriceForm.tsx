@@ -24,7 +24,7 @@ export function ManualPriceForm({ item, onSave }: ManualPriceFormProps) {
     <div className="rounded-[24px] border border-white/8 bg-white/[0.04] p-4">
       <div className="mb-4">
         <p className="text-sm font-medium text-white">Manual price update</p>
-        <p className="mt-1 text-sm text-zinc-400">Add your own store check to improve the current estimate.</p>
+        <p className="mt-1 text-sm text-zinc-400">Add your own store check so your grocery log stays useful even without premium comparison.</p>
       </div>
 
       <div className="space-y-3">

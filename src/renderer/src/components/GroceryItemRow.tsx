@@ -9,6 +9,7 @@ type GroceryTrackedItemRowProps = {
   bestStoreLabel: string;
   lastUpdatedLabel: string;
   hasMatch: boolean;
+  canComparePrices?: boolean;
   onSelect: () => void;
 };
 
@@ -46,6 +47,7 @@ export function GroceryItemRow(props: GroceryItemRowProps) {
     bestStoreLabel,
     lastUpdatedLabel,
     hasMatch,
+    canComparePrices = true,
     onSelect,
   } = props;
   const topConfidence = item.latestPrices[0]?.confidenceScore ?? 0;
@@ -69,14 +71,22 @@ export function GroceryItemRow(props: GroceryItemRowProps) {
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <PriceBadge label={hasMatch ? bestPriceLabel : "No price match"} tone={hasMatch ? "success" : "muted"} />
-        <PriceBadge label={bestStoreLabel} tone="default" />
+        <PriceBadge label={hasMatch ? bestPriceLabel : canComparePrices ? "No price match" : "No manual price yet"} tone={hasMatch ? "success" : "muted"} />
+        <PriceBadge label={bestStoreLabel} tone={canComparePrices ? "default" : "muted"} />
         <PriceBadge label={lastUpdatedLabel} tone="muted" />
       </div>
 
       <div className="mt-3 flex items-center justify-between gap-3">
         <PriceConfidenceIndicator score={topConfidence} />
-        <span className="text-xs text-zinc-500">{hasMatch ? "Tap for store detail" : "Try a clearer item name"}</span>
+        <span className="text-xs text-zinc-500">
+          {hasMatch
+            ? canComparePrices
+              ? "Tap for store detail"
+              : "Tap to review your saved prices"
+            : canComparePrices
+              ? "Try a clearer item name"
+              : "Add a manual store price to start tracking"}
+        </span>
       </div>
     </button>
   );

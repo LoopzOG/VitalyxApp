@@ -106,6 +106,15 @@ export async function getRestoredSessionUser() {
   return data.session?.user ? mapAuthUser(data.session.user) : null;
 }
 
+export async function getAccessToken() {
+  const { data, error } = await supabase.auth.getSession();
+  if (error) {
+    throw error;
+  }
+
+  return data.session?.access_token ?? null;
+}
+
 export function subscribeToAuthChanges(
   callback: (event: AuthChangeEvent, user: SessionUser | null) => void,
 ) {

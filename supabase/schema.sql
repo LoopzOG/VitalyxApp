@@ -6,6 +6,10 @@ create table if not exists public.profiles (
   display_name text not null,
   role text not null default 'user' check (role in ('user', 'admin')),
   subscription_tier text not null default 'free' check (subscription_tier in ('free', 'premium')),
+  stripe_customer_id text,
+  stripe_subscription_id text,
+  stripe_price_id text,
+  subscription_status text default 'inactive',
   created_at timestamptz not null default timezone('utc', now())
 );
 
@@ -14,6 +18,18 @@ alter table public.profiles
 
 alter table public.profiles
   add column if not exists subscription_tier text not null default 'free' check (subscription_tier in ('free', 'premium'));
+
+alter table public.profiles
+  add column if not exists stripe_customer_id text;
+
+alter table public.profiles
+  add column if not exists stripe_subscription_id text;
+
+alter table public.profiles
+  add column if not exists stripe_price_id text;
+
+alter table public.profiles
+  add column if not exists subscription_status text default 'inactive';
 
 create table if not exists public.user_app_data (
   user_id uuid primary key references auth.users (id) on delete cascade,
@@ -87,6 +103,14 @@ on public.profiles
 for update
 using (auth.uid() = id)
 with check (auth.uid() = id);
+
+revoke update (role, subscription_tier, stripe_customer_id, stripe_subscription_id, stripe_price_id, subscription_status)
+on public.profiles
+from authenticated;
+
+grant update (display_name, email)
+on public.profiles
+to authenticated;
 
 drop policy if exists "user_app_data_select_own" on public.user_app_data;
 create policy "user_app_data_select_own"

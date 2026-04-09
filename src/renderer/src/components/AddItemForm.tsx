@@ -99,7 +99,7 @@ export function AddItemForm({ onAdd, onBarcodeLookup, isPremiumSubscriber, onUpg
       <div className="mb-4">
         <p className="text-sm font-medium text-white">Add grocery item</p>
         <p className="mt-1 text-sm text-zinc-400">
-          Add by food name or barcode so Vitalyx can track pricing across stores. Manual barcode entry stays free, while UPC camera scanning is premium.
+          Add groceries by name or barcode, then save your own price checks. Manual barcode entry stays free, while UPC camera scanning and store comparison are premium.
         </p>
       </div>
 
@@ -181,7 +181,7 @@ export function AddItemForm({ onAdd, onBarcodeLookup, isPremiumSubscriber, onUpg
                 ? "Reading barcode from the captured image..."
                 : isLookingUpBarcode
                 ? "Checking barcode..."
-                : barcodeFeedback ?? "Use a packaged food barcode to prefill the grocery item. Manual barcode lookup is free, and premium adds tap-to-scan UPC capture."}
+                : barcodeFeedback ?? "Use a packaged food barcode to prefill the grocery item. Manual barcode lookup is free, and premium adds tap-to-scan UPC capture plus store comparison."}
             </div>
           </>
         ) : null}

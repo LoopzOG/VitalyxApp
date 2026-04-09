@@ -1213,6 +1213,8 @@ function App() {
       await startPremiumCheckout({
         accessToken,
         interval,
+        userId: user.id,
+        userEmail: user.email,
       });
     } catch (error) {
       setBillingFeedback(getErrorMessage(error, "Unable to start Vitalyx Premium checkout right now."));

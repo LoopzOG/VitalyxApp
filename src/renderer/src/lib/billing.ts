@@ -1,14 +1,21 @@
 type BillingInterval = "monthly" | "yearly";
 
-export async function startPremiumCheckout(input: { accessToken: string; interval: BillingInterval }) {
+export async function startPremiumCheckout(input: {
+  accessToken: string | null;
+  interval: BillingInterval;
+  userId: string;
+  userEmail: string;
+}) {
   const response = await fetch("/api/stripe/create-checkout-session", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${input.accessToken}`,
+      ...(input.accessToken ? { Authorization: `Bearer ${input.accessToken}` } : {}),
     },
     body: JSON.stringify({
       interval: input.interval,
+      userId: input.userId,
+      userEmail: input.userEmail,
     }),
   });
 

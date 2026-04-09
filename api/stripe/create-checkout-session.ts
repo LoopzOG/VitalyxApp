@@ -62,7 +62,7 @@ async function readJsonBody(req: NodeJS.ReadableStream) {
   }
 
   const rawBody = Buffer.concat(chunks).toString("utf8");
-  return rawBody ? (JSON.parse(rawBody) as { interval?: BillingInterval }) : {};
+  return rawBody ? (JSON.parse(rawBody) as { interval?: BillingInterval; userId?: string; userEmail?: string }) : {};
 }
 
 export default async function handler(
@@ -81,23 +81,26 @@ export default async function handler(
         ? authorizationHeader.slice("Bearer ".length).trim()
         : "";
 
-    if (!bearerToken) {
-      res.status(401).json({ error: "Sign in again before starting checkout." });
-      return;
-    }
-
     const body = await readJsonBody(req);
     const interval: BillingInterval = body.interval === "yearly" ? "yearly" : "monthly";
-    const supabase = getSupabaseClient();
     const stripe = getStripeClient();
+    let userId = body.userId?.trim() ?? "";
+    let userEmail = body.userEmail?.trim() ?? "";
 
-    const { data, error } = await supabase.auth.getUser(bearerToken);
-    if (error || !data.user) {
-      res.status(401).json({ error: "Your session could not be verified. Please sign in again." });
+    if (bearerToken) {
+      const supabase = getSupabaseClient();
+      const { data, error } = await supabase.auth.getUser(bearerToken);
+      if (!error && data.user) {
+        userId = data.user.id;
+        userEmail = data.user.email ?? userEmail;
+      }
+    }
+
+    if (!userId || !userEmail) {
+      res.status(401).json({ error: "Sign in again before starting Vitalyx Premium checkout." });
       return;
     }
 
-    const user = data.user;
     const price = getPriceForInterval(interval);
     const appUrl = getAppUrl();
 
@@ -105,17 +108,19 @@ export default async function handler(
       mode: "subscription",
       success_url: `${appUrl}?billing=success&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${appUrl}?billing=cancelled`,
-      customer_email: user.email ?? undefined,
-      client_reference_id: user.id,
+      customer_email: userEmail,
+      client_reference_id: userId,
       allow_promotion_codes: true,
       billing_address_collection: "auto",
       metadata: {
-        user_id: user.id,
+        user_id: userId,
+        user_email: userEmail,
         billing_interval: interval,
       },
       subscription_data: {
         metadata: {
-          user_id: user.id,
+          user_id: userId,
+          user_email: userEmail,
           billing_interval: interval,
         },
       },

@@ -1906,7 +1906,7 @@ function App() {
             className="flex items-center gap-2 rounded-[18px] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-zinc-100"
           >
             <ArrowLeft size={16} />
-            Back to More
+            Back to Pantry
           </button>
 
           <SectionCard eyebrow="Profile" title="Customize your profile">
@@ -1998,7 +1998,7 @@ function App() {
             className="flex items-center gap-2 rounded-[18px] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-zinc-100"
           >
             <ArrowLeft size={16} />
-            Back to More
+            Back to Pantry
           </button>
 
           <SectionCard eyebrow="Membership" title="Vitalyx Premium">
@@ -2042,6 +2042,76 @@ function App() {
               {billingFeedback ? (
                 <div className="rounded-[22px] border border-emerald-400/15 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-100">
                   {billingFeedback}
+                </div>
+              ) : null}
+
+              <div className="rounded-[22px] border border-white/8 bg-white/[0.04] p-4">
+                <p className="text-sm font-medium text-white">Redeem promo code</p>
+                <p className="mt-1 text-sm text-zinc-400">
+                  Apply a free Vitalyx Premium code to upgrade this account without checkout.
+                </p>
+                <div className="mt-3 flex flex-col gap-3 sm:flex-row">
+                  <input
+                    value={promoCodeInput}
+                    onChange={(event) => setPromoCodeInput(event.target.value.toUpperCase())}
+                    placeholder="VITALYX-ABCD-EFGH"
+                    className="flex-1 rounded-[18px] border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none placeholder:text-zinc-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleRedeemPromoCode}
+                    className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-3 text-sm font-medium text-zinc-100"
+                  >
+                    Redeem code
+                  </button>
+                </div>
+              </div>
+
+              {user?.role === "admin" ? (
+                <div className="rounded-[22px] border border-emerald-400/15 bg-emerald-400/10 p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-white">Promo code generator</p>
+                      <p className="mt-1 text-sm text-emerald-100/80">
+                        Generate free premium codes for users right from Premium.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleGeneratePromoCode}
+                      className="rounded-[18px] bg-emerald-400 px-4 py-2 text-sm font-semibold text-zinc-950"
+                    >
+                      Generate premium code
+                    </button>
+                  </div>
+
+                  <div className="mt-4 space-y-2">
+                    {promoCodes.length ? (
+                      promoCodes.slice(0, 8).map((promoCode) => (
+                        <div key={promoCode.id} className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-3">
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-semibold tracking-[0.18em] text-white">{promoCode.code}</p>
+                              <p className="mt-1 text-xs text-zinc-400">
+                                Created {new Date(promoCode.createdAt).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                              </p>
+                            </div>
+                            <span className={`rounded-full px-3 py-1 text-xs font-medium uppercase tracking-[0.18em] ${
+                              promoCode.redeemedByUserId
+                                ? "bg-white/10 text-zinc-300"
+                                : "bg-emerald-400/15 text-emerald-300"
+                            }`}>
+                              {promoCode.redeemedByUserId ? "Redeemed" : "Available"}
+                            </span>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="rounded-[18px] border border-dashed border-white/10 bg-black/20 p-4 text-sm text-zinc-300">
+                        No promo codes generated yet.
+                      </div>
+                    )}
+                  </div>
                 </div>
               ) : null}
             </div>
@@ -2269,128 +2339,6 @@ function App() {
             </div>
           </SectionCard>
         ) : null}
-
-        <SectionCard eyebrow="Membership" title="Vitalyx Premium">
-          <div className="space-y-3">
-            <div className="rounded-[22px] border border-white/8 bg-white/[0.04] p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-sm font-medium text-white">
-                    {user?.subscriptionTier === "premium" ? "Vitalyx Premium active" : "Free plan"}
-                  </p>
-                  <p className="mt-1 text-sm text-zinc-400">
-                    Vitalyx Premium unlocks live UPC camera scanning, grocery comparison tools, and advanced tracking through Stripe billing at $9.99 monthly or $59.99 yearly.
-                  </p>
-                  <p className="mt-2 text-xs text-zinc-500">
-                    {retailerFeedStatus === "instacart"
-                      ? "Nearby retailer discovery is connected."
-                      : "Live retailer discovery can be enabled later with Instacart server credentials."}
-                  </p>
-                </div>
-                {user?.subscriptionTier === "premium" ? (
-                  <span className="rounded-full bg-emerald-400/15 px-3 py-1 text-xs font-medium uppercase tracking-[0.2em] text-emerald-300">
-                    Vitalyx Premium
-                  </span>
-                ) : (
-                  <div className="flex flex-col gap-2 sm:flex-row">
-                    <button
-                      type="button"
-                      onClick={() => void handleStartPremiumCheckout("monthly")}
-                      disabled={billingLoadingPlan !== null}
-                      className="rounded-[18px] bg-emerald-400 px-4 py-2 text-sm font-semibold text-zinc-950 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {billingLoadingPlan === "monthly" ? "Starting..." : "Vitalyx Premium $9.99 / month"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleStartPremiumCheckout("yearly")}
-                      disabled={billingLoadingPlan !== null}
-                      className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-2 text-sm font-medium text-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {billingLoadingPlan === "yearly" ? "Starting..." : "Vitalyx Premium $59.99 / year"}
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {billingFeedback ? (
-              <div className="rounded-[22px] border border-emerald-400/15 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-100">
-                {billingFeedback}
-              </div>
-            ) : null}
-
-            <div className="rounded-[22px] border border-white/8 bg-white/[0.04] p-4">
-              <p className="text-sm font-medium text-white">Redeem promo code</p>
-              <p className="mt-1 text-sm text-zinc-400">
-                Apply a free Vitalyx Premium code to upgrade this account without checkout.
-              </p>
-              <div className="mt-3 flex flex-col gap-3 sm:flex-row">
-                <input
-                  value={promoCodeInput}
-                  onChange={(event) => setPromoCodeInput(event.target.value.toUpperCase())}
-                  placeholder="VITALYX-ABCD-EFGH"
-                  className="flex-1 rounded-[18px] border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none placeholder:text-zinc-500"
-                />
-                <button
-                  type="button"
-                  onClick={handleRedeemPromoCode}
-                  className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-3 text-sm font-medium text-zinc-100"
-                >
-                  Redeem code
-                </button>
-              </div>
-            </div>
-
-            {user?.role === "admin" ? (
-              <div className="rounded-[22px] border border-emerald-400/15 bg-emerald-400/10 p-4">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-white">Promo code generator</p>
-                    <p className="mt-1 text-sm text-emerald-100/80">
-                      Generate free premium codes for users right from Pantry.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleGeneratePromoCode}
-                    className="rounded-[18px] bg-emerald-400 px-4 py-2 text-sm font-semibold text-zinc-950"
-                  >
-                    Generate premium code
-                  </button>
-                </div>
-
-                <div className="mt-4 space-y-2">
-                  {promoCodes.length ? (
-                    promoCodes.slice(0, 8).map((promoCode) => (
-                      <div key={promoCode.id} className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-3">
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <div>
-                            <p className="text-sm font-semibold tracking-[0.18em] text-white">{promoCode.code}</p>
-                            <p className="mt-1 text-xs text-zinc-400">
-                              Created {new Date(promoCode.createdAt).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
-                            </p>
-                          </div>
-                          <span className={`rounded-full px-3 py-1 text-xs font-medium uppercase tracking-[0.18em] ${
-                            promoCode.redeemedByUserId
-                              ? "bg-white/10 text-zinc-300"
-                              : "bg-emerald-400/15 text-emerald-300"
-                          }`}>
-                            {promoCode.redeemedByUserId ? "Redeemed" : "Available"}
-                          </span>
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="rounded-[18px] border border-dashed border-white/10 bg-black/20 p-4 text-sm text-zinc-300">
-                      No promo codes generated yet.
-                    </div>
-                  )}
-                </div>
-              </div>
-            ) : null}
-          </div>
-        </SectionCard>
 
         <button type="button" onClick={handleSignOut} className="flex w-full items-center justify-center gap-2 rounded-[22px] border border-white/10 bg-white/[0.05] px-4 py-3 text-sm font-medium text-zinc-100">
           <RotateCcw size={16} />

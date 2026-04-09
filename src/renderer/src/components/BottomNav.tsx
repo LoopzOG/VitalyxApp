@@ -1,4 +1,4 @@
-import { Home, LayoutGrid, Dumbbell, Ellipsis } from "lucide-react";
+import { Home, LayoutGrid, Dumbbell, ShoppingBasket } from "lucide-react";
 
 export type MobileTab = "home" | "meals" | "track" | "more";
 
@@ -11,7 +11,7 @@ const items: { key: MobileTab; label: string; icon: typeof Home }[] = [
   { key: "home", label: "Home", icon: Home },
   { key: "meals", label: "Meals", icon: LayoutGrid },
   { key: "track", label: "Track", icon: Dumbbell },
-  { key: "more", label: "Pantry", icon: Ellipsis },
+  { key: "more", label: "Pantry", icon: ShoppingBasket },
 ];
 
 export function BottomNav({ activeTab, onNavigate }: BottomNavProps) {

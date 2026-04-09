@@ -83,6 +83,7 @@ export function AddItemForm({
   }
 
   async function handleLiveBarcodeDetected(detectedBarcode: string) {
+    setIsScannerOpen(false);
     setIsScanningBarcode(true);
     setBarcodeFeedback(`Detected ${detectedBarcode}. Looking up the product now...`);
     setBarcode(detectedBarcode);

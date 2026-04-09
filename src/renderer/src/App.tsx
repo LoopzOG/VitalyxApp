@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Apple, Dumbbell, Flame, Footprints, Goal, HeartPulse, Repeat, RotateCcw, Settings2, Wallet } from "lucide-react";
+import { Apple, ArrowLeft, Dumbbell, Flame, Footprints, Goal, HeartPulse, Repeat, RotateCcw, Settings2, Wallet } from "lucide-react";
 import {
   createInitialPlanner,
   fitnessSettings,
@@ -73,7 +73,7 @@ const tabMeta: Record<MobileTab, { title: string; subtitle: string }> = {
   home: { title: "Vitalyx", subtitle: "Building your Wealth starts with your Health" },
   meals: { title: "Meals", subtitle: "Scan, search, or snap food and confirm the nutrition before saving." },
   track: { title: "Track", subtitle: "Keep workout logging simple and fast." },
-  more: { title: "More", subtitle: "Track grocery prices, compare stores, and manage your setup." },
+  more: { title: "Pantry", subtitle: "Track groceries, save UPC items, and manage your pantry tools." },
 };
 
 function todayLabel() {
@@ -278,6 +278,7 @@ function cleanBarcode(value?: string) {
 
 function App() {
   const [activeTab, setActiveTab] = useState<MobileTab>("home");
+  const [moreView, setMoreView] = useState<"default" | "premium" | "profile">("default");
   const [user, setUser] = useState<SessionUser | null>(null);
   const [appData, setAppData] = useState<UserAppData | null>(null);
   const [searchValue, setSearchValue] = useState("");
@@ -334,6 +335,9 @@ function App() {
   const [dailyVerseLoading, setDailyVerseLoading] = useState(true);
   const [billingLoadingPlan, setBillingLoadingPlan] = useState<"monthly" | "yearly" | null>(null);
   const [billingFeedback, setBillingFeedback] = useState<string | null>(null);
+  const [profileDraftName, setProfileDraftName] = useState("");
+  const [profileFeedback, setProfileFeedback] = useState<string | null>(null);
+  const [profileSaving, setProfileSaving] = useState(false);
   const photoInputRef = useRef<HTMLInputElement | null>(null);
   const hasLoadedRemoteData = useRef(false);
 
@@ -511,6 +515,10 @@ function App() {
     return () => window.clearTimeout(timeoutId);
   }, [user, appData]);
 
+  useEffect(() => {
+    setProfileDraftName(user?.name ?? "");
+  }, [user?.name]);
+
   const planner = appData?.planner ?? createInitialPlanner();
   const normalizedPlanner = planner.length ? planner : createInitialPlanner();
   const groceryLists = appData?.groceryLists ?? createInitialGroceryLists();
@@ -667,6 +675,54 @@ function App() {
 
     if (activeTab === "more") {
       setGrocerySearchQuery(value);
+    }
+  }
+
+  function handleNavigate(tab: MobileTab) {
+    setActiveTab(tab);
+    if (tab !== "more") {
+      setMoreView("default");
+      setProfileFeedback(null);
+    }
+  }
+
+  function openPremiumView() {
+    setActiveTab("more");
+    setMoreView("premium");
+    setProfileFeedback(null);
+  }
+
+  function openProfileView() {
+    setActiveTab("more");
+    setMoreView("profile");
+    setProfileFeedback(null);
+  }
+
+  async function saveProfileDetails() {
+    if (!user) {
+      return;
+    }
+
+    const nextDisplayName = profileDraftName.trim();
+    if (!nextDisplayName) {
+      setProfileFeedback("Enter a display name before saving your profile.");
+      return;
+    }
+
+    setProfileSaving(true);
+    setProfileFeedback(null);
+
+    try {
+      const profile = await updateUserAccessProfile(user.id, {
+        display_name: nextDisplayName,
+      });
+
+      setUser((currentUser) => (currentUser ? applyProfileToSessionUser(currentUser, profile) : currentUser));
+      setProfileFeedback("Profile updated.");
+    } catch (error) {
+      setProfileFeedback(getErrorMessage(error, "Unable to save your profile right now."));
+    } finally {
+      setProfileSaving(false);
     }
   }
 
@@ -1238,6 +1294,7 @@ function App() {
   }
 
   async function handleNutritionBarcodeDetected(detectedBarcode: string) {
+    setIsNutritionScannerOpen(false);
     setBarcodeValue(detectedBarcode);
     const result = await nutritionService.fromBarcode(detectedBarcode);
 
@@ -1839,6 +1896,160 @@ function App() {
         </div>
       );
     }
+
+    if (activeTab === "more" && moreView === "profile") {
+      return (
+        <div className="space-y-5">
+          <button
+            type="button"
+            onClick={() => setMoreView("default")}
+            className="flex items-center gap-2 rounded-[18px] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-zinc-100"
+          >
+            <ArrowLeft size={16} />
+            Back to More
+          </button>
+
+          <SectionCard eyebrow="Profile" title="Customize your profile">
+            <div className="space-y-4">
+              <div className="rounded-[24px] border border-white/8 bg-white/[0.04] p-4">
+                <div className="flex items-center gap-4">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-[24px] bg-emerald-400 text-2xl font-semibold text-zinc-950">
+                    {user?.name.slice(0, 1).toUpperCase()}
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-white">{user?.name}</p>
+                    <p className="mt-1 text-sm text-zinc-400">{user?.email}</p>
+                    <p className="mt-2 text-xs uppercase tracking-[0.2em] text-emerald-300/80">
+                      {user?.subscriptionTier === "premium" ? "Vitalyx Premium" : "Free plan"}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <label className="flex flex-col gap-2">
+                <span className="text-sm font-medium text-white">Display name</span>
+                <input
+                  value={profileDraftName}
+                  onChange={(event) => setProfileDraftName(event.target.value)}
+                  className="w-full rounded-[20px] border border-white/10 bg-black/20 px-4 py-3 text-white outline-none"
+                  placeholder="Your name"
+                />
+              </label>
+
+              <div className="rounded-[20px] border border-white/8 bg-black/20 p-4 text-sm text-zinc-300">
+                Email: {user?.email}
+                <br />
+                Role: {user?.role}
+              </div>
+
+              <SectionCard eyebrow="Preferences" title="Current preferences">
+                <div className="space-y-3">
+                  <div className="rounded-[22px] border border-white/8 bg-white/[0.04] p-4">
+                    <div className="mb-3 flex items-center gap-2 text-sm font-medium text-white">
+                      <Goal size={16} className="text-emerald-300" />
+                      Active goals
+                    </div>
+                    <div className="space-y-2 text-sm text-zinc-300">
+                      <p>{fitnessSettings[0].value}</p>
+                      <p>{nutritionSettings[0].value}</p>
+                      <p>{nutritionSettings[1].value}</p>
+                    </div>
+                  </div>
+                  <div className="rounded-[22px] border border-white/8 bg-white/[0.04] p-4">
+                    <div className="mb-3 flex items-center gap-2 text-sm font-medium text-white">
+                      <Settings2 size={16} className="text-emerald-300" />
+                      App preferences
+                    </div>
+                    <div className="space-y-2 text-sm text-zinc-300">
+                      <p>{profileSettings[1].label}: {profileSettings[1].value}</p>
+                      <p>{profileSettings[2].label}: {profileSettings[2].value}</p>
+                      <p>{nutritionSettings[2].label}: {nutritionSettings[2].value}</p>
+                    </div>
+                  </div>
+                </div>
+              </SectionCard>
+
+              {profileFeedback ? (
+                <div className="rounded-[20px] border border-emerald-400/15 bg-emerald-400/10 p-4 text-sm text-emerald-100">
+                  {profileFeedback}
+                </div>
+              ) : null}
+
+              <button
+                type="button"
+                onClick={() => void saveProfileDetails()}
+                disabled={profileSaving}
+                className="w-full rounded-[22px] bg-emerald-400 px-4 py-3 text-sm font-semibold text-zinc-950 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {profileSaving ? "Saving profile..." : "Save profile"}
+              </button>
+            </div>
+          </SectionCard>
+        </div>
+      );
+    }
+
+    if (activeTab === "more" && moreView === "premium") {
+      return (
+        <div className="space-y-5">
+          <button
+            type="button"
+            onClick={() => setMoreView("default")}
+            className="flex items-center gap-2 rounded-[18px] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-zinc-100"
+          >
+            <ArrowLeft size={16} />
+            Back to More
+          </button>
+
+          <SectionCard eyebrow="Membership" title="Vitalyx Premium">
+            <div className="space-y-3">
+              <div className="rounded-[22px] border border-white/8 bg-white/[0.04] p-4">
+                <p className="text-sm font-medium text-white">
+                  {user?.subscriptionTier === "premium" ? "Vitalyx Premium active" : "Upgrade your plan"}
+                </p>
+                <p className="mt-2 text-sm text-zinc-400">
+                  Vitalyx Premium unlocks live UPC camera scanning, advanced grocery tools, and premium tracking features.
+                </p>
+              </div>
+
+              <div className="grid gap-3">
+                <button
+                  type="button"
+                  onClick={() => void handleStartPremiumCheckout("monthly")}
+                  disabled={billingLoadingPlan !== null || user?.subscriptionTier === "premium"}
+                  className="rounded-[22px] bg-emerald-400 px-4 py-3 text-sm font-semibold text-zinc-950 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {user?.subscriptionTier === "premium"
+                    ? "Vitalyx Premium active"
+                    : billingLoadingPlan === "monthly"
+                      ? "Starting monthly checkout..."
+                      : "Start $9.99 / month"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleStartPremiumCheckout("yearly")}
+                  disabled={billingLoadingPlan !== null || user?.subscriptionTier === "premium"}
+                  className="rounded-[22px] border border-white/10 bg-black/20 px-4 py-3 text-sm font-medium text-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {user?.subscriptionTier === "premium"
+                    ? "Yearly included"
+                    : billingLoadingPlan === "yearly"
+                      ? "Starting yearly checkout..."
+                      : "Start $59.99 / year"}
+                </button>
+              </div>
+
+              {billingFeedback ? (
+                <div className="rounded-[22px] border border-emerald-400/15 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-100">
+                  {billingFeedback}
+                </div>
+              ) : null}
+            </div>
+          </SectionCard>
+        </div>
+      );
+    }
+
     return (
       <div className="space-y-5">
         <SectionCard eyebrow="Dashboard widget" title="Grocery price tracking">
@@ -2137,7 +2348,7 @@ function App() {
                   <div>
                     <p className="text-sm font-medium text-white">Promo code generator</p>
                     <p className="mt-1 text-sm text-emerald-100/80">
-                      Generate free premium codes for users right from the More tab.
+                      Generate free premium codes for users right from Pantry.
                     </p>
                   </div>
                   <button
@@ -2181,12 +2392,6 @@ function App() {
           </div>
         </SectionCard>
 
-        <SectionCard eyebrow="Goals" title="Current preferences">
-          <div className="space-y-3">
-            <div className="rounded-[22px] border border-white/8 bg-white/[0.04] p-4"><div className="mb-3 flex items-center gap-2 text-sm font-medium text-white"><Goal size={16} className="text-emerald-300" />Active goals</div><div className="space-y-2 text-sm text-zinc-300"><p>{fitnessSettings[0].value}</p><p>{nutritionSettings[0].value}</p><p>{nutritionSettings[1].value}</p></div></div>
-            <div className="rounded-[22px] border border-white/8 bg-white/[0.04] p-4"><div className="mb-3 flex items-center gap-2 text-sm font-medium text-white"><Settings2 size={16} className="text-emerald-300" />App preferences</div><div className="space-y-2 text-sm text-zinc-300"><p>{profileSettings[1].label}: {profileSettings[1].value}</p><p>{profileSettings[2].label}: {profileSettings[2].value}</p><p>{nutritionSettings[2].label}: {nutritionSettings[2].value}</p></div></div>
-          </div>
-        </SectionCard>
         <button type="button" onClick={handleSignOut} className="flex w-full items-center justify-center gap-2 rounded-[22px] border border-white/10 bg-white/[0.05] px-4 py-3 text-sm font-medium text-zinc-100">
           <RotateCcw size={16} />
           Sign out {user?.name}
@@ -2195,7 +2400,12 @@ function App() {
     );
   }
 
-  const meta = tabMeta[activeTab];
+  const meta =
+    activeTab === "more" && moreView === "premium"
+      ? { title: "Vitalyx Premium", subtitle: "Manage your plan and unlock premium features." }
+      : activeTab === "more" && moreView === "profile"
+        ? { title: "Profile", subtitle: "Customize your Vitalyx identity and account details." }
+        : tabMeta[activeTab];
   if (!isReady) return <div className="flex min-h-screen items-center justify-center text-sm text-zinc-400">Loading Vitalyx...</div>;
 
   const authenticatedUser = user;
@@ -2238,13 +2448,15 @@ function App() {
       >
         <MobileAppShell
           activeTab={activeTab}
-          onNavigate={setActiveTab}
+          onNavigate={handleNavigate}
           title={meta.title}
           subtitle={meta.subtitle}
           searchValue={headerSearchValue}
           onSearchChange={handleHeaderSearchChange}
           searchPlaceholder={headerSearchPlaceholder}
           user={authenticatedUser!}
+          onOpenPremium={openPremiumView}
+          onOpenProfile={openProfileView}
         >
           {renderScreen()}
         </MobileAppShell>

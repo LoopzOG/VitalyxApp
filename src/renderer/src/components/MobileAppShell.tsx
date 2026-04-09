@@ -12,6 +12,8 @@ type MobileAppShellProps = {
   onSearchChange: (value: string) => void;
   searchPlaceholder?: string;
   user: SessionUser;
+  onOpenPremium: () => void;
+  onOpenProfile: () => void;
   children: ReactNode;
 };
 
@@ -24,6 +26,8 @@ export function MobileAppShell({
   onSearchChange,
   searchPlaceholder,
   user,
+  onOpenPremium,
+  onOpenProfile,
   children,
 }: MobileAppShellProps) {
   return (
@@ -36,6 +40,8 @@ export function MobileAppShell({
           onSearchChange={onSearchChange}
           searchPlaceholder={searchPlaceholder}
           user={user}
+          onOpenPremium={onOpenPremium}
+          onOpenProfile={onOpenProfile}
         />
 
         <main className="px-4 pb-[calc(7rem+env(safe-area-inset-bottom,0px))] pt-5">

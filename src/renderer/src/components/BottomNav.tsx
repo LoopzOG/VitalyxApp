@@ -11,7 +11,7 @@ const items: { key: MobileTab; label: string; icon: typeof Home }[] = [
   { key: "home", label: "Home", icon: Home },
   { key: "meals", label: "Meals", icon: LayoutGrid },
   { key: "track", label: "Track", icon: Dumbbell },
-  { key: "more", label: "More", icon: Ellipsis },
+  { key: "more", label: "Pantry", icon: Ellipsis },
 ];
 
 export function BottomNav({ activeTab, onNavigate }: BottomNavProps) {

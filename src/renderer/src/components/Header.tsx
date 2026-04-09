@@ -1,4 +1,4 @@
-import { Bell, Sparkles } from "lucide-react";
+import { Sparkles, UserRound } from "lucide-react";
 import { SearchBar } from "@/components/SearchBar";
 import type { SessionUser } from "@/lib/storage";
 
@@ -9,9 +9,20 @@ type HeaderProps = {
   onSearchChange: (value: string) => void;
   searchPlaceholder?: string;
   user: SessionUser;
+  onOpenPremium: () => void;
+  onOpenProfile: () => void;
 };
 
-export function Header({ title, subtitle, searchValue, onSearchChange, searchPlaceholder, user }: HeaderProps) {
+export function Header({
+  title,
+  subtitle,
+  searchValue,
+  onSearchChange,
+  searchPlaceholder,
+  user,
+  onOpenPremium,
+  onOpenProfile,
+}: HeaderProps) {
   return (
     <header className="sticky top-0 z-30 border-b border-white/8 bg-[rgba(10,10,12,0.9)] px-4 pb-4 pt-[calc(1.25rem+env(safe-area-inset-top,0px))] backdrop-blur-xl">
       <div className="mx-auto flex w-full max-w-[28rem] flex-col gap-4">
@@ -28,13 +39,20 @@ export function Header({ title, subtitle, searchValue, onSearchChange, searchPla
           <div className="flex items-center gap-2">
             <button
               type="button"
-              className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/8 bg-white/[0.045] text-zinc-300"
+              onClick={onOpenPremium}
+              className="rounded-2xl border border-emerald-300/20 bg-emerald-400/10 px-3 py-3 text-xs font-semibold uppercase tracking-[0.18em] text-emerald-200"
             >
-              <Bell size={18} />
+              Premium
             </button>
-            <div className="flex h-11 min-w-11 items-center justify-center rounded-2xl bg-emerald-400 px-3 text-sm font-semibold text-zinc-950">
-              {user.name.slice(0, 1).toUpperCase()}
-            </div>
+            <button
+              type="button"
+              onClick={onOpenProfile}
+              className="flex h-11 min-w-11 items-center justify-center gap-2 rounded-2xl bg-emerald-400 px-3 text-sm font-semibold text-zinc-950"
+              aria-label="Open profile"
+            >
+              <UserRound size={14} />
+              <span>{user.name.slice(0, 1).toUpperCase()}</span>
+            </button>
           </div>
         </div>
 

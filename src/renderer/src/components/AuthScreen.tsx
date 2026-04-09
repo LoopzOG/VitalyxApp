@@ -32,6 +32,10 @@ export function AuthScreen({
   const [confirmPassword, setConfirmPassword] = useState("");
   const [clientError, setClientError] = useState<string | null>(null);
 
+  function normalizeEmailInput(value: string) {
+    return value.trim().toLowerCase();
+  }
+
   useEffect(() => {
     setMode(initialMode);
   }, [initialMode]);
@@ -62,7 +66,7 @@ export function AuthScreen({
           setClientError(emailError ?? passwordError);
           return;
         }
-        await onSignIn({ email, password });
+        await onSignIn({ email: normalizeEmailInput(email), password });
         return;
       }
 
@@ -78,7 +82,7 @@ export function AuthScreen({
           setClientError(nameError ?? emailError ?? passwordError);
           return;
         }
-        await onRegister({ name, email, password });
+        await onRegister({ name, email: normalizeEmailInput(email), password });
         return;
       }
 
@@ -88,7 +92,7 @@ export function AuthScreen({
           setClientError(emailError);
           return;
         }
-        await onForgotPassword({ email });
+        await onForgotPassword({ email: normalizeEmailInput(email) });
         return;
       }
 
@@ -175,8 +179,15 @@ export function AuthScreen({
                 <label className="flex flex-col gap-2">
                   <span className="text-sm font-medium text-white">Email</span>
                   <input
+                    type="email"
                     value={email}
                     onChange={(event) => setEmail(event.target.value)}
+                    onBlur={() => setEmail((current) => normalizeEmailInput(current))}
+                    autoComplete="email"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    inputMode="email"
                     className="rounded-2xl border border-white/10 bg-zinc-900/60 px-4 py-3 text-white outline-none"
                     placeholder="you@example.com"
                   />

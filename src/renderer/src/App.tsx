@@ -319,6 +319,7 @@ function App() {
   const [dailyVerse, setDailyVerse] = useState<DailyVerse | null>(null);
   const [dailyVerseLoading, setDailyVerseLoading] = useState(true);
   const [billingLoadingPlan, setBillingLoadingPlan] = useState<"monthly" | "yearly" | null>(null);
+  const [billingFeedback, setBillingFeedback] = useState<string | null>(null);
   const photoInputRef = useRef<HTMLInputElement | null>(null);
   const hasLoadedRemoteData = useRef(false);
 
@@ -390,11 +391,11 @@ function App() {
     }
 
     if (billingState === "success") {
-      setFeedback("Stripe checkout completed. Premium access will appear as soon as the subscription confirmation finishes.");
+      setBillingFeedback("Stripe checkout completed. Vitalyx Premium will appear as soon as the subscription confirmation finishes.");
     }
 
     if (billingState === "cancelled") {
-      setFeedback("Stripe checkout was cancelled. You can restart monthly or yearly checkout whenever you're ready.");
+      setBillingFeedback("Stripe checkout was cancelled. You can restart monthly or yearly Vitalyx Premium whenever you're ready.");
     }
 
     params.delete("billing");
@@ -1183,7 +1184,7 @@ function App() {
     }
 
     if (user.subscriptionTier === "premium") {
-      setFeedback("Premium UPC scanning is already active on this account.");
+      setBillingFeedback("Vitalyx Premium is already active on this account.");
       return;
     }
 
@@ -1196,10 +1197,11 @@ function App() {
     }
 
     if (user.subscriptionTier === "premium") {
-      setFeedback("Premium is already active on this account.");
+      setBillingFeedback("Vitalyx Premium is already active on this account.");
       return;
     }
 
+    setBillingFeedback(null);
     setBillingLoadingPlan(interval);
 
     try {
@@ -1213,7 +1215,7 @@ function App() {
         interval,
       });
     } catch (error) {
-      setFeedback(getErrorMessage(error, "Unable to start Stripe checkout right now."));
+      setBillingFeedback(getErrorMessage(error, "Unable to start Vitalyx Premium checkout right now."));
     } finally {
       setBillingLoadingPlan(null);
     }
@@ -2061,26 +2063,26 @@ function App() {
           </SectionCard>
         ) : null}
 
-        <SectionCard eyebrow="Subscription" title="Barcode access">
+        <SectionCard eyebrow="Membership" title="Vitalyx Premium">
           <div className="space-y-3">
             <div className="rounded-[22px] border border-white/8 bg-white/[0.04] p-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-medium text-white">
-                    {user?.subscriptionTier === "premium" ? "Premium active" : "Free plan"}
+                    {user?.subscriptionTier === "premium" ? "Vitalyx Premium active" : "Free plan"}
                   </p>
-              <p className="mt-1 text-sm text-zinc-400">
-                Premium unlocks UPC camera scanning through Stripe billing at $9.99 monthly or $59.99 yearly.
-              </p>
-              <p className="mt-2 text-xs text-zinc-500">
-                {retailerFeedStatus === "instacart"
-                  ? "Nearby retailer discovery is connected."
-                  : "Live retailer discovery can be enabled later with Instacart server credentials."}
-              </p>
-            </div>
+                  <p className="mt-1 text-sm text-zinc-400">
+                    Vitalyx Premium unlocks live UPC camera scanning, grocery comparison tools, and advanced tracking through Stripe billing at $9.99 monthly or $59.99 yearly.
+                  </p>
+                  <p className="mt-2 text-xs text-zinc-500">
+                    {retailerFeedStatus === "instacart"
+                      ? "Nearby retailer discovery is connected."
+                      : "Live retailer discovery can be enabled later with Instacart server credentials."}
+                  </p>
+                </div>
                 {user?.subscriptionTier === "premium" ? (
                   <span className="rounded-full bg-emerald-400/15 px-3 py-1 text-xs font-medium uppercase tracking-[0.2em] text-emerald-300">
-                    Premium
+                    Vitalyx Premium
                   </span>
                 ) : (
                   <div className="flex flex-col gap-2 sm:flex-row">
@@ -2090,7 +2092,7 @@ function App() {
                       disabled={billingLoadingPlan !== null}
                       className="rounded-[18px] bg-emerald-400 px-4 py-2 text-sm font-semibold text-zinc-950 disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      {billingLoadingPlan === "monthly" ? "Starting..." : "$9.99 / month"}
+                      {billingLoadingPlan === "monthly" ? "Starting..." : "Vitalyx Premium $9.99 / month"}
                     </button>
                     <button
                       type="button"
@@ -2098,17 +2100,23 @@ function App() {
                       disabled={billingLoadingPlan !== null}
                       className="rounded-[18px] border border-white/10 bg-black/20 px-4 py-2 text-sm font-medium text-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      {billingLoadingPlan === "yearly" ? "Starting..." : "$59.99 / year"}
+                      {billingLoadingPlan === "yearly" ? "Starting..." : "Vitalyx Premium $59.99 / year"}
                     </button>
                   </div>
                 )}
               </div>
             </div>
 
+            {billingFeedback ? (
+              <div className="rounded-[22px] border border-emerald-400/15 bg-emerald-400/10 px-4 py-3 text-sm text-emerald-100">
+                {billingFeedback}
+              </div>
+            ) : null}
+
             <div className="rounded-[22px] border border-white/8 bg-white/[0.04] p-4">
               <p className="text-sm font-medium text-white">Redeem promo code</p>
               <p className="mt-1 text-sm text-zinc-400">
-                Apply a free premium code to upgrade this account without checkout.
+                Apply a free Vitalyx Premium code to upgrade this account without checkout.
               </p>
               <div className="mt-3 flex flex-col gap-3 sm:flex-row">
                 <input

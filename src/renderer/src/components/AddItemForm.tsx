@@ -1,8 +1,8 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { Barcode, ScanLine } from "lucide-react";
 import type { GroceryUnit } from "@/lib/groceryTypes";
 import { mockStores } from "@/lib/groceryMockData";
-import { scanBarcodeFromImage } from "@/lib/barcodeScanner";
+import { LiveBarcodeScanner } from "@/components/LiveBarcodeScanner";
 
 type AddItemFormProps = {
   onAdd: (input: {
@@ -38,7 +38,7 @@ export function AddItemForm({ onAdd, onBarcodeLookup, isPremiumSubscriber, onUpg
   const [barcodeFeedback, setBarcodeFeedback] = useState<string | null>(null);
   const [isLookingUpBarcode, setIsLookingUpBarcode] = useState(false);
   const [isScanningBarcode, setIsScanningBarcode] = useState(false);
-  const barcodeCaptureInputRef = useRef<HTMLInputElement | null>(null);
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
 
   async function runBarcodeLookup(nextBarcode = barcode) {
     const cleaned = nextBarcode.replace(/[^\d]/g, "");
@@ -63,43 +63,31 @@ export function AddItemForm({ onAdd, onBarcodeLookup, isPremiumSubscriber, onUpg
     setBarcodeFeedback(`Matched from ${result.sourceLabel}. Review quantity and store before saving.`);
   }
 
-  async function handleBarcodeCapture(file: File) {
+  async function handleLiveBarcodeDetected(detectedBarcode: string) {
     setIsScanningBarcode(true);
-    setBarcodeFeedback("Scanning barcode from the camera image...");
-
-    const detectedBarcode = await scanBarcodeFromImage(file);
-    setIsScanningBarcode(false);
-
-    if (!detectedBarcode) {
-      setBarcodeFeedback("No barcode was detected in that image. Try better lighting, hold the UPC flat, or enter it manually.");
-      return;
-    }
-
-    setBarcode(detectedBarcode);
     setBarcodeFeedback(`Detected ${detectedBarcode}. Looking up the product now...`);
-    await runBarcodeLookup(detectedBarcode);
+    setBarcode(detectedBarcode);
+    try {
+      await runBarcodeLookup(detectedBarcode);
+    } finally {
+      setIsScanningBarcode(false);
+    }
   }
 
   return (
     <div className="rounded-[24px] border border-white/8 bg-white/[0.04] p-4">
-      <input
-        ref={barcodeCaptureInputRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        className="hidden"
-        onChange={(event) => {
-          const file = event.target.files?.[0];
-          if (file) {
-            void handleBarcodeCapture(file);
-          }
-          event.currentTarget.value = "";
+      <LiveBarcodeScanner
+        open={isScannerOpen}
+        onDetected={handleLiveBarcodeDetected}
+        onClose={() => {
+          setIsScannerOpen(false);
+          setIsScanningBarcode(false);
         }}
       />
       <div className="mb-4">
         <p className="text-sm font-medium text-white">Add grocery item</p>
         <p className="mt-1 text-sm text-zinc-400">
-          Add groceries by name or barcode, then save your own price checks. Manual barcode entry stays free, while UPC camera scanning and store comparison are premium.
+          Add groceries by name or barcode, then save your own price checks. Manual barcode entry stays free, while live UPC camera scanning and store comparison are premium.
         </p>
       </div>
 
@@ -162,26 +150,28 @@ export function AddItemForm({ onAdd, onBarcodeLookup, isPremiumSubscriber, onUpg
                   return;
                 }
 
-                barcodeCaptureInputRef.current?.click();
+                setBarcodeFeedback("Opening the live UPC scanner...");
+                setIsScanningBarcode(true);
+                setIsScannerOpen(true);
               }}
               className="flex w-full items-center justify-center gap-2 rounded-[20px] border border-dashed border-white/10 bg-black/20 px-4 py-3 text-sm text-zinc-300"
             >
               <ScanLine size={16} />
-              {isScanningBarcode ? "Scanning UPC..." : isPremiumSubscriber ? "Scan UPC (Premium)" : "Unlock UPC Scanning"}
+              {isScanningBarcode ? "Scanner live..." : isPremiumSubscriber ? "Scan UPC Live (Premium)" : "Unlock UPC Scanning"}
             </button>
 
             {!isPremiumSubscriber ? (
               <div className="rounded-[20px] border border-amber-300/20 bg-amber-300/10 p-3 text-sm text-amber-100">
-                Free plan: type or paste a barcode manually. Premium unlocks camera-based UPC scanning.
+                Free plan: type or paste a barcode manually. Premium unlocks live camera UPC scanning.
               </div>
             ) : null}
 
             <div className="rounded-[20px] border border-white/8 bg-black/20 p-3 text-sm text-zinc-300">
           {isScanningBarcode
-                ? "Reading barcode from the captured image..."
+                ? "Reading the UPC from your live camera..."
                 : isLookingUpBarcode
                 ? "Checking barcode..."
-                : barcodeFeedback ?? "Use a packaged food barcode to prefill the grocery item. Manual barcode lookup is free, and premium adds tap-to-scan UPC capture plus store comparison."}
+                : barcodeFeedback ?? "Use a packaged food barcode to prefill the grocery item. Manual barcode lookup is free, and premium adds a live camera scanner plus store comparison."}
             </div>
           </>
         ) : null}

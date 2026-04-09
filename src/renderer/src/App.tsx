@@ -538,6 +538,9 @@ function App() {
   const todayIndex = Math.max(normalizedPlanner.findIndex((day) => day.day === todayLabel()), 0);
   const safeDayIndex = Math.min(dayIndex, Math.max(normalizedPlanner.length - 1, 0));
   const isPremiumSubscriber = user?.subscriptionTier === "premium";
+  const isLivePriceComparisonEnabled = false;
+  const canCompareGroceryPrices = isPremiumSubscriber && isLivePriceComparisonEnabled;
+  const canUseLiveGroceryScanner = true;
   const todayMeals = normalizedPlanner[todayIndex]?.meals ?? [];
   const totals = mealTotals(todayMeals);
   const activeGroceryList = groceryLists[0] ?? createInitialGroceryLists()[0];
@@ -548,23 +551,23 @@ function App() {
   };
   const visibleGroceryList = {
     ...pricedGroceryList,
-    items: filterVisibleGroceryPrices(pricedGroceryList.items, isPremiumSubscriber),
+    items: filterVisibleGroceryPrices(pricedGroceryList.items, canCompareGroceryPrices),
   };
   const filteredGroceryItems = visibleGroceryList.items.filter((item) => matchesGrocerySearch(item, grocerySearchQuery));
-  const comparisonResults = isPremiumSubscriber ? storeComparisonService.calculateStoreTotals(pricedGroceryList) : [];
-  const cheapestStoreResult = isPremiumSubscriber ? storeComparisonService.getCheapestStore(pricedGroceryList) : null;
-  const perItemBestPrices = isPremiumSubscriber ? storeComparisonService.getPerItemBestPrices(pricedGroceryList) : [];
+  const comparisonResults = canCompareGroceryPrices ? storeComparisonService.calculateStoreTotals(pricedGroceryList) : [];
+  const cheapestStoreResult = canCompareGroceryPrices ? storeComparisonService.getCheapestStore(pricedGroceryList) : null;
+  const perItemBestPrices = canCompareGroceryPrices ? storeComparisonService.getPerItemBestPrices(pricedGroceryList) : [];
   const mixAndMatchTotal = perItemBestPrices.reduce((total, entry) => total + entry.totalCost, 0);
   const selectedGroceryItem =
     filteredGroceryItems.find((item) => item.id === selectedGroceryItemId) ?? filteredGroceryItems[0] ?? null;
   const selectedStoreName = selectedGroceryItem?.preferredStore ?? selectedGroceryItem?.latestPrices[0]?.storeName ?? "";
   const selectedItemHistory = selectedGroceryItem
-    ? isPremiumSubscriber
+    ? canCompareGroceryPrices
       ? groceryPriceService.getPriceHistory(selectedGroceryItem.name, selectedStoreName, manualPriceRecords)
       : getManualPriceHistory(selectedGroceryItem.name, selectedStoreName, manualPriceRecords)
     : [];
   const weeklyEstimate = cheapestStoreResult?.totalCost ?? mixAndMatchTotal;
-  const stapleChanges = isPremiumSubscriber
+  const stapleChanges = canCompareGroceryPrices
     ? ["Chicken breast", "Eggs", "Rice"]
         .map((name) => {
           const history = groceryPriceService.getPriceHistory(name, cheapestStoreResult?.storeName ?? "Walmart", manualPriceRecords);
@@ -1869,7 +1872,7 @@ function App() {
     return (
       <div className="space-y-5">
         <SectionCard eyebrow="Dashboard widget" title="Grocery price tracking">
-          {isPremiumSubscriber ? (
+          {canCompareGroceryPrices ? (
             <div className="space-y-3">
               <GroceryDashboardWidget
                 weeklyEstimate={weeklyEstimate}
@@ -1885,7 +1888,7 @@ function App() {
             </div>
           ) : (
             <div className="rounded-[24px] border border-emerald-300/15 bg-emerald-400/8 p-4 text-sm leading-7 text-zinc-200">
-              Free users can build a grocery list, add items by manual barcode entry, and save their own store prices. Premium unlocks full store comparison and best-cart estimates.
+              UPC product scanning and manual price tracking are active. Live store comparison is temporarily paused until the retailer pricing feed is connected.
             </div>
           )}
         </SectionCard>
@@ -1893,19 +1896,21 @@ function App() {
         <GroceryListCard
           name={visibleGroceryList.name}
           itemCount={visibleGroceryList.items.length}
-          totalLabel={isPremiumSubscriber && cheapestStoreResult ? formatMoney(cheapestStoreResult.totalCost) : "Manual tracking"}
+          totalLabel={canCompareGroceryPrices && cheapestStoreResult ? formatMoney(cheapestStoreResult.totalCost) : "Manual tracking"}
           subtitle={
-            isPremiumSubscriber && cheapestStoreResult
+            canCompareGroceryPrices && cheapestStoreResult
               ? `${cheapestStoreResult.storeName} is currently the cheapest full-list option.`
-              : isPremiumSubscriber
+              : canCompareGroceryPrices
                 ? "Add items to see price estimates across stores."
-                : "Save groceries and your own price checks. Store comparison unlocks with premium."
+                : "Scan products, build your list, and save your own price checks while comparison is paused."
           }
         >
           <AddItemForm
             onAdd={addGroceryItem}
             onBarcodeLookup={(barcode) => groceryPriceService.lookupBarcode(barcode)}
             isPremiumSubscriber={isPremiumSubscriber}
+            canUseLiveScanner={canUseLiveGroceryScanner}
+            canComparePrices={canCompareGroceryPrices}
             onUpgradeToPremium={handleUpgradeToPremium}
             storeOptions={availableRetailerNames}
           />
@@ -1927,7 +1932,7 @@ function App() {
                       bestStoreLabel={bestRecord ? bestRecord.storeName : "No store match"}
                       lastUpdatedLabel={relativeDateLabel(bestRecord?.checkedAt)}
                       hasMatch={Boolean(bestRecord)}
-                      canComparePrices={isPremiumSubscriber}
+                      canComparePrices={canCompareGroceryPrices}
                       onSelect={() => setSelectedGroceryItemId(item.id)}
                     />
                     <button
@@ -1952,22 +1957,15 @@ function App() {
           <button
             type="button"
             onClick={() => {
-              if (!isPremiumSubscriber) {
-                setFeedback("Store-by-store grocery comparison is part of Premium. Free users can still add groceries and save manual prices.");
-                handleUpgradeToPremium();
-                return;
-              }
-              setShowStoreComparison((current) => !current);
+              setFeedback("Live store comparison is temporarily disabled while the retailer pricing feed is being rebuilt.");
             }}
-            className={`w-full rounded-[22px] px-4 py-3 text-sm font-semibold ${
-              isPremiumSubscriber ? "bg-emerald-400 text-zinc-950" : "border border-white/10 bg-black/20 text-zinc-100"
-            }`}
+            className="w-full rounded-[22px] border border-white/10 bg-black/20 px-4 py-3 text-sm font-semibold text-zinc-100"
           >
-            {isPremiumSubscriber ? (showStoreComparison ? "Hide store comparison" : "Compare stores") : "Unlock store comparison"}
+            Store comparison coming soon
           </button>
         </GroceryListCard>
 
-        {showStoreComparison && isPremiumSubscriber && pricedGroceryList.items.length ? (
+        {showStoreComparison && canCompareGroceryPrices && pricedGroceryList.items.length ? (
           <SectionCard eyebrow="Store comparison" title="Best cart options">
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
@@ -2062,7 +2060,7 @@ function App() {
                     ))
                   ) : (
                     <div className="rounded-[20px] border border-dashed border-white/10 bg-black/20 p-4 text-sm text-zinc-400">
-                      {isPremiumSubscriber
+                      {canCompareGroceryPrices
                         ? "No store prices were matched for this item yet. Try a clearer grocery name or add your own manual price."
                         : "No manual prices saved yet. Add your own price update to start tracking this item."}
                     </div>
@@ -2070,9 +2068,9 @@ function App() {
                 </div>
               </div>
 
-              {!isPremiumSubscriber ? (
+              {!canCompareGroceryPrices ? (
                 <div className="rounded-[20px] border border-emerald-300/15 bg-emerald-400/8 p-4 text-sm text-zinc-200">
-                  Premium adds automatic store comparison and best-price suggestions. Your manual price checks stay available on the free plan.
+                  Product tracking by UPC is active. Manual price checks stay available while automatic comparison is paused.
                 </div>
               ) : null}
 

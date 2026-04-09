@@ -121,7 +121,7 @@ export abstract class BasePriceProvider {
 export class MockPriceProvider extends BasePriceProvider {
   readonly name = "mock";
 
-  getPricesForProduct(product: NormalizedProduct, _item: GroceryListItem) {
+  getPricesForProduct(product: NormalizedProduct, _item?: GroceryListItem) {
     return latestByStore(mockPriceHistory[product.id] ?? []);
   }
 
@@ -136,7 +136,7 @@ export class MockPriceProvider extends BasePriceProvider {
 export class RetailerApiProvider extends BasePriceProvider {
   readonly name = "retailer-api";
 
-  getPricesForProduct() {
+  getPricesForProduct(_product: NormalizedProduct, _item?: GroceryListItem) {
     return [];
   }
 
@@ -152,7 +152,7 @@ export class UserSubmittedPriceProvider extends BasePriceProvider {
     super();
   }
 
-  getPricesForProduct(product: NormalizedProduct) {
+  getPricesForProduct(product: NormalizedProduct, _item?: GroceryListItem) {
     const records = this.manualRecords.filter((record) => record.productId === product.id);
     return latestByStore(records);
   }
@@ -344,7 +344,7 @@ export class GroceryPriceService {
   }
 
   private providers(manualRecords: PriceRecord[]) {
-    return [new UserSubmittedPriceProvider(manualRecords), new MockPriceProvider(), new RetailerApiProvider()];
+    return [new UserSubmittedPriceProvider(manualRecords), new RetailerApiProvider()];
   }
 
   getPricesForItem(item: GroceryListItem, manualRecords: PriceRecord[] = []): PriceLookupResult {

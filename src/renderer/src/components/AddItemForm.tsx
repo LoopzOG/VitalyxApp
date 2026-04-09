@@ -25,13 +25,23 @@ type AddItemFormProps = {
     sourceLabel: string;
   } | null>;
   isPremiumSubscriber: boolean;
+  canUseLiveScanner?: boolean;
+  canComparePrices?: boolean;
   onUpgradeToPremium: () => void;
   storeOptions?: string[];
 };
 
 const units: GroceryUnit[] = ["lb", "dozen", "bag", "tub", "head", "piece", "cup", "oz", "serving"];
 
-export function AddItemForm({ onAdd, onBarcodeLookup, isPremiumSubscriber, onUpgradeToPremium, storeOptions }: AddItemFormProps) {
+export function AddItemForm({
+  onAdd,
+  onBarcodeLookup,
+  isPremiumSubscriber,
+  canUseLiveScanner = false,
+  canComparePrices = false,
+  onUpgradeToPremium,
+  storeOptions,
+}: AddItemFormProps) {
   const availableStores = storeOptions?.length ? storeOptions : mockStores;
   const [entryMode, setEntryMode] = useState<"name" | "barcode">("name");
   const [name, setName] = useState("");
@@ -109,7 +119,7 @@ export function AddItemForm({ onAdd, onBarcodeLookup, isPremiumSubscriber, onUpg
       <div className="mb-4">
         <p className="text-sm font-medium text-white">Add grocery item</p>
         <p className="mt-1 text-sm text-zinc-400">
-          Add groceries by name or barcode, then save your own price checks. Manual barcode entry stays free, while live UPC camera scanning and store comparison are premium.
+          Add groceries by name or UPC barcode, then save your own price checks. Live product scanning is on, while store comparison stays paused until the retailer feed is ready.
         </p>
       </div>
 
@@ -169,9 +179,11 @@ export function AddItemForm({ onAdd, onBarcodeLookup, isPremiumSubscriber, onUpg
             <button
               type="button"
               onClick={() => {
-                if (!isPremiumSubscriber) {
-                  setBarcodeFeedback("UPC camera scanning is a premium feature. Manual barcode entry and lookup stay available on the free plan.");
-                  onUpgradeToPremium();
+                if (!canUseLiveScanner) {
+                  setBarcodeFeedback("Live UPC scanning is not available on this plan yet. You can still type the barcode manually.");
+                  if (!isPremiumSubscriber) {
+                    onUpgradeToPremium();
+                  }
                   return;
                 }
 
@@ -182,12 +194,12 @@ export function AddItemForm({ onAdd, onBarcodeLookup, isPremiumSubscriber, onUpg
               className="flex w-full items-center justify-center gap-2 rounded-[20px] border border-dashed border-white/10 bg-black/20 px-4 py-3 text-sm text-zinc-300"
             >
               <ScanLine size={16} />
-              {isScanningBarcode ? "Scanner live..." : isPremiumSubscriber ? "Scan UPC Live (Premium)" : "Unlock UPC Scanning"}
+              {isScanningBarcode ? "Scanner live..." : canUseLiveScanner ? "Scan UPC Live" : "Unlock UPC Scanning"}
             </button>
 
-            {!isPremiumSubscriber ? (
+            {!canComparePrices ? (
               <div className="rounded-[20px] border border-amber-300/20 bg-amber-300/10 p-3 text-sm text-amber-100">
-                Free plan: type or paste a barcode manually. Premium unlocks live camera UPC scanning.
+                UPC scanning is enabled for product tracking. Store-by-store price comparison will return once the live retailer feed is connected.
               </div>
             ) : null}
 
@@ -196,7 +208,7 @@ export function AddItemForm({ onAdd, onBarcodeLookup, isPremiumSubscriber, onUpg
                 ? "Reading the UPC from your live camera..."
                 : isLookingUpBarcode
                 ? "Checking barcode..."
-                : barcodeFeedback ?? "Use a packaged food barcode to prefill the grocery item. Manual barcode lookup is free, and premium adds a live camera scanner plus store comparison."}
+                : barcodeFeedback ?? "Use a packaged food barcode to prefill the grocery item. Live scanning identifies the product, and manual prices stay available while comparison is paused."}
             </div>
           </>
         ) : null}

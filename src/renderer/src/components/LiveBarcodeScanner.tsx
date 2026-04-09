@@ -13,8 +13,11 @@ const supportedFormats = [
   Html5QrcodeSupportedFormats.UPC_E,
   Html5QrcodeSupportedFormats.EAN_13,
   Html5QrcodeSupportedFormats.EAN_8,
+  Html5QrcodeSupportedFormats.UPC_EAN_EXTENSION,
   Html5QrcodeSupportedFormats.CODE_128,
   Html5QrcodeSupportedFormats.CODE_39,
+  Html5QrcodeSupportedFormats.CODE_93,
+  Html5QrcodeSupportedFormats.ITF,
 ];
 
 export function LiveBarcodeScanner({ open, onDetected, onClose }: LiveBarcodeScannerProps) {
@@ -42,13 +45,26 @@ export function LiveBarcodeScanner({ open, onDetected, onClose }: LiveBarcodeSca
       setStatus("Starting camera...");
 
       try {
+        const cameras = await Html5Qrcode.getCameras().catch(() => []);
+        const preferredCamera =
+          cameras.find((camera) => /back|rear|environment/i.test(camera.label))?.id ??
+          cameras[0]?.id ??
+          { facingMode: { ideal: "environment" } };
+
         await scanner.start(
-          { facingMode: "environment" },
+          preferredCamera,
           {
-            fps: 10,
-            aspectRatio: 1.777778,
-            qrbox: { width: 260, height: 140 },
-            disableFlip: false,
+            fps: 8,
+            aspectRatio: 1.333334,
+            qrbox: (viewfinderWidth, viewfinderHeight) => {
+              const width = Math.min(viewfinderWidth * 0.92, 360);
+              const height = Math.min(Math.max(viewfinderHeight * 0.22, 110), 170);
+              return {
+                width: Math.floor(width),
+                height: Math.floor(height),
+              };
+            },
+            disableFlip: true,
           },
           async (decodedText) => {
             const cleaned = decodedText.replace(/[^\d]/g, "").trim();
@@ -79,7 +95,7 @@ export function LiveBarcodeScanner({ open, onDetected, onClose }: LiveBarcodeSca
         );
 
         if (!cancelled) {
-          setStatus("Scanner is live. Hold the barcode steady inside the frame.");
+          setStatus("Scanner is live. Hold the barcode steady and fill the guide from left to right.");
         }
       } catch (error) {
         if (!cancelled) {

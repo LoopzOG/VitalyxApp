@@ -68,7 +68,18 @@ export function AddItemForm({ onAdd, onBarcodeLookup, isPremiumSubscriber, onUpg
     setBarcodeFeedback(`Detected ${detectedBarcode}. Looking up the product now...`);
     setBarcode(detectedBarcode);
     try {
-      await runBarcodeLookup(detectedBarcode);
+      const result = await onBarcodeLookup(detectedBarcode).catch(() => null);
+
+      if (!result) {
+        setBarcodeFeedback("UPC detected, but no product match was found yet. Try another angle, better lighting, or use manual entry.");
+        throw new Error("UPC lookup did not return a product.");
+      }
+
+      setName(result.name);
+      setBrand(result.brand ?? "");
+      setUnit(result.suggestedUnit);
+      setBarcode(result.barcode);
+      setBarcodeFeedback(`Matched from ${result.sourceLabel}. Review quantity and store before saving.`);
     } finally {
       setIsScanningBarcode(false);
     }

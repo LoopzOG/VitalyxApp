@@ -41,6 +41,27 @@ function cleanBarcode(value: string) {
   return value.replace(/[^\d]/g, "");
 }
 
+function expandBarcodeCandidates(value: string) {
+  const cleaned = cleanBarcode(value);
+  if (!cleaned) {
+    return [];
+  }
+
+  const candidates = new Set<string>([cleaned]);
+
+  // Some mobile scanners emit UPC-A codes as EAN-13 with a leading zero.
+  if (cleaned.length === 13 && cleaned.startsWith("0")) {
+    candidates.add(cleaned.slice(1));
+  }
+
+  // Some catalogs store UPC-A as EAN-13.
+  if (cleaned.length === 12) {
+    candidates.add(`0${cleaned}`);
+  }
+
+  return [...candidates];
+}
+
 function normalizeText(value: string) {
   return value
     .toLowerCase()
@@ -230,12 +251,21 @@ export class GroceryPriceService {
       return null;
     }
 
-    const offProduct = await getOpenFoodFactsNutrition(normalizedBarcode).catch(() => null);
-    const matchedMockProduct = groceryProducts.find((product) => product.barcode === normalizedBarcode);
+    const barcodeCandidates = expandBarcodeCandidates(normalizedBarcode);
+    let offProduct = null;
+
+    for (const candidate of barcodeCandidates) {
+      offProduct = await getOpenFoodFactsNutrition(candidate).catch(() => null);
+      if (offProduct) {
+        break;
+      }
+    }
+
+    const matchedMockProduct = groceryProducts.find((product) => barcodeCandidates.includes(product.barcode ?? ""));
 
     if (offProduct) {
       return {
-        barcode: normalizedBarcode,
+        barcode: matchedMockProduct?.barcode ?? barcodeCandidates[0] ?? normalizedBarcode,
         name: offProduct.name,
         brand: undefined,
         category: matchedMockProduct?.category ?? "Packaged grocery",

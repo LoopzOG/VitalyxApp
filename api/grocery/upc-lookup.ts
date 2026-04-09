@@ -1,4 +1,6 @@
 import { getOpenFoodFactsNutrition } from "../../src/renderer/src/lib/openFoodFacts";
+import { lookupOpenNutritionBarcode } from "./openNutrition";
+import { getOpenPricesPriceRecords, getOpenPricesProduct, type OpenPricesLookupPriceRecord } from "./openPrices";
 
 type RequestLike = {
   method?: string;
@@ -19,6 +21,7 @@ type LookupResponse = {
   category?: string;
   suggestedUnit: "piece";
   sourceLabel: string;
+  latestPrices?: OpenPricesLookupPriceRecord[];
 };
 
 type SerpApiSearchResponse = {
@@ -129,6 +132,11 @@ export default async function handler(req: RequestLike, res: ResponseLike) {
 
   try {
     const openFoodFacts = await getOpenFoodFactsNutrition(barcode).catch(() => null);
+    const [openPricesProduct, openPricesPrices] = await Promise.all([
+      getOpenPricesProduct(barcode).catch(() => null),
+      getOpenPricesPriceRecords(barcode, openFoodFacts?.name).catch(() => []),
+    ]);
+
     if (openFoodFacts) {
       return res.status(200).json({
         barcode: openFoodFacts.barcode,
@@ -136,13 +144,37 @@ export default async function handler(req: RequestLike, res: ResponseLike) {
         brand: openFoodFacts.brand,
         category: openFoodFacts.category,
         suggestedUnit: "piece",
-        sourceLabel: "Open Food Facts",
+        sourceLabel: openPricesPrices.length ? "Open Food Facts + Open Prices" : "Open Food Facts",
+        latestPrices: openPricesPrices,
+      } satisfies LookupResponse);
+    }
+
+    if (openPricesProduct?.code && (openPricesProduct.product_name || openPricesPrices.length)) {
+      return res.status(200).json({
+        barcode: openPricesProduct.code,
+        name: openPricesProduct.product_name?.trim() || openPricesPrices[0]?.itemName || `UPC ${openPricesProduct.code}`,
+        brand: openPricesProduct.brands?.split(",")[0]?.trim() || undefined,
+        category: openPricesProduct.categories_tags?.[0]?.split(":").at(-1)?.replace(/-/g, " "),
+        suggestedUnit: "piece",
+        sourceLabel: "Open Prices",
+        latestPrices: openPricesPrices,
+      } satisfies LookupResponse);
+    }
+
+    const openNutrition = await lookupOpenNutritionBarcode(barcode).catch(() => null);
+    if (openNutrition) {
+      return res.status(200).json({
+        ...openNutrition,
+        latestPrices: openPricesPrices,
       } satisfies LookupResponse);
     }
 
     const walmartFallback = await fetchWalmartFallback(barcode).catch(() => null);
     if (walmartFallback) {
-      return res.status(200).json(walmartFallback);
+      return res.status(200).json({
+        ...walmartFallback,
+        latestPrices: openPricesPrices,
+      } satisfies LookupResponse);
     }
 
     return res.status(404).json({ error: "No UPC match found." });

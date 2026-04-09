@@ -48,6 +48,7 @@ type BarcodeLookupProviderMatch = {
   category?: string;
   suggestedUnit: "piece";
   sourceLabel: string;
+  latestPrices?: PriceRecord[];
 };
 
 function expandBarcodeCandidates(value: string) {
@@ -121,10 +122,14 @@ function estimateItemTotal(item: GroceryListItem, record: PriceRecord) {
   return toCurrency(item.quantity * record.price);
 }
 
+function getPersistedExternalPriceRecords(item: GroceryListItem) {
+  return item.latestPrices.filter((record) => record.source !== "manual");
+}
+
 export abstract class BasePriceProvider {
   abstract readonly name: string;
   abstract getPricesForProduct(product: NormalizedProduct, item: GroceryListItem): PriceRecord[];
-  abstract getPriceHistory(product: NormalizedProduct, storeName?: string): PriceRecord[];
+  abstract getPriceHistory(product: NormalizedProduct, storeName?: string, item?: GroceryListItem): PriceRecord[];
 }
 
 export class MockPriceProvider extends BasePriceProvider {
@@ -145,12 +150,14 @@ export class MockPriceProvider extends BasePriceProvider {
 export class RetailerApiProvider extends BasePriceProvider {
   readonly name = "retailer-api";
 
-  getPricesForProduct(_product: NormalizedProduct, _item?: GroceryListItem) {
-    return [];
+  getPricesForProduct(_product: NormalizedProduct, item?: GroceryListItem) {
+    return item ? latestByStore(getPersistedExternalPriceRecords(item)) : [];
   }
 
-  getPriceHistory() {
-    return [];
+  getPriceHistory(_product: NormalizedProduct, storeName?: string, item?: GroceryListItem) {
+    return (item ? getPersistedExternalPriceRecords(item) : [])
+      .filter((record) => !storeName || record.storeName === storeName)
+      .sort((a, b) => new Date(a.checkedAt).getTime() - new Date(b.checkedAt).getTime());
   }
 }
 
@@ -315,6 +322,7 @@ export class GroceryPriceService {
         suggestedUnit: manualMatch.suggestedUnit,
         matchedProductId: manualMatch.matchedProductId,
         sourceLabel: "Your Vitalyx UPC memory",
+        latestPrices: [],
       };
     }
 
@@ -352,6 +360,7 @@ export class GroceryPriceService {
         suggestedUnit: "piece" as const,
         matchedProductId: matchedCatalogProduct?.id,
         sourceLabel: matchedCatalogProduct ? `${providerMatch.sourceLabel} + Vitalyx match` : providerMatch.sourceLabel,
+        latestPrices: "latestPrices" in providerMatch && Array.isArray(providerMatch.latestPrices) ? providerMatch.latestPrices : [],
       };
     }
 
@@ -364,6 +373,7 @@ export class GroceryPriceService {
         suggestedUnit: "piece" as const,
         matchedProductId: matchedCatalogProduct.id,
         sourceLabel: "Vitalyx mock catalog",
+        latestPrices: [],
       };
     }
 
@@ -378,10 +388,14 @@ export class GroceryPriceService {
     const normalizedName = this.matchingService.normalizeItemName(item.name);
     const matchedProduct = this.matchingService.matchItemToProduct(item);
     const suggestedMatches = this.matchingService.getSuggestedMatches(item);
+    const persistedExternalPrices = getPersistedExternalPriceRecords(item);
 
     if (!matchedProduct) {
       const latestPrices = latestByStore(
-        manualRecords.filter((record) => normalizeText(record.itemName) === normalizedName),
+        [
+          ...persistedExternalPrices,
+          ...manualRecords.filter((record) => normalizeText(record.itemName) === normalizedName),
+        ],
       );
 
       return {
@@ -455,6 +469,21 @@ export class GroceryPriceService {
     return this.providers(manualRecords)
       .flatMap((provider) => provider.getPriceHistory(product, storeName))
       .sort((a, b) => new Date(a.checkedAt).getTime() - new Date(b.checkedAt).getTime());
+  }
+
+  async fetchLivePricesForBarcode(barcode: string) {
+    const normalizedBarcode = cleanBarcode(barcode);
+    if (!normalizedBarcode) {
+      return [];
+    }
+
+    const response = await fetch(`/api/grocery/prices?barcode=${encodeURIComponent(normalizedBarcode)}`);
+    if (!response.ok) {
+      return [];
+    }
+
+    const payload = (await response.json()) as { latestPrices?: PriceRecord[] };
+    return Array.isArray(payload.latestPrices) ? payload.latestPrices : [];
   }
 
   estimateItemTotal(item: GroceryListItem, record: PriceRecord) {

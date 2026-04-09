@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Barcode, ScanLine } from "lucide-react";
-import type { GroceryUnit } from "@/lib/groceryTypes";
+import type { GroceryUnit, PriceRecord } from "@/lib/groceryTypes";
 import { mockStores } from "@/lib/groceryMockData";
 import { LiveBarcodeScanner } from "@/components/LiveBarcodeScanner";
 
@@ -14,6 +14,7 @@ type AddItemFormProps = {
     category?: string;
     matchedProductId?: string;
     preferredStore?: string;
+    initialPriceRecords?: PriceRecord[];
   }) => void | Promise<void>;
   onBarcodeLookup: (barcode: string) => Promise<{
     name: string;
@@ -23,10 +24,27 @@ type AddItemFormProps = {
     matchedProductId?: string;
     suggestedUnit: GroceryUnit;
     sourceLabel: string;
+    latestPrices?: PriceRecord[];
   } | null>;
   isPremiumSubscriber: boolean;
   canUseLiveScanner?: boolean;
   canComparePrices?: boolean;
+  upcStatus?: {
+    openNutrition?: {
+      configured: boolean;
+      reachable: boolean;
+      sourceLabel: string;
+      message: string;
+    };
+    openFoodFacts?: {
+      sourceLabel: string;
+      message: string;
+    };
+    openPrices?: {
+      sourceLabel: string;
+      message: string;
+    };
+  } | null;
   onUpgradeToPremium: () => void;
   storeOptions?: string[];
 };
@@ -39,6 +57,7 @@ export function AddItemForm({
   isPremiumSubscriber,
   canUseLiveScanner = false,
   canComparePrices = false,
+  upcStatus,
   onUpgradeToPremium,
   storeOptions,
 }: AddItemFormProps) {
@@ -52,6 +71,7 @@ export function AddItemForm({
   const [barcode, setBarcode] = useState("");
   const [matchedProductId, setMatchedProductId] = useState<string | undefined>(undefined);
   const [detectedCategory, setDetectedCategory] = useState<string | undefined>(undefined);
+  const [detectedPrices, setDetectedPrices] = useState<PriceRecord[]>([]);
   const [barcodeFeedback, setBarcodeFeedback] = useState<string | null>(null);
   const [isLookingUpBarcode, setIsLookingUpBarcode] = useState(false);
   const [isScanningBarcode, setIsScanningBarcode] = useState(false);
@@ -79,7 +99,10 @@ export function AddItemForm({
     setBarcode(result.barcode);
     setMatchedProductId(result.matchedProductId);
     setDetectedCategory(result.category);
-    setBarcodeFeedback(`Matched from ${result.sourceLabel}. Review quantity and store before saving.`);
+    setDetectedPrices(result.latestPrices ?? []);
+    setBarcodeFeedback(
+      `Matched from ${result.sourceLabel}${result.latestPrices?.length ? ` with ${result.latestPrices.length} live price ${result.latestPrices.length === 1 ? "record" : "records"}` : ""}. Review quantity and store before saving.`,
+    );
   }
 
   async function handleLiveBarcodeDetected(detectedBarcode: string) {
@@ -101,7 +124,10 @@ export function AddItemForm({
       setBarcode(result.barcode);
       setMatchedProductId(result.matchedProductId);
       setDetectedCategory(result.category);
-      setBarcodeFeedback(`Matched from ${result.sourceLabel}. Review quantity and store before saving.`);
+      setDetectedPrices(result.latestPrices ?? []);
+      setBarcodeFeedback(
+        `Matched from ${result.sourceLabel}${result.latestPrices?.length ? ` with ${result.latestPrices.length} live price ${result.latestPrices.length === 1 ? "record" : "records"}` : ""}. Review quantity and store before saving.`,
+      );
     } finally {
       setIsScanningBarcode(false);
     }
@@ -120,9 +146,24 @@ export function AddItemForm({
       <div className="mb-4">
         <p className="text-sm font-medium text-white">Add grocery item</p>
         <p className="mt-1 text-sm text-zinc-400">
-          Add groceries by name or UPC barcode, then save your own price checks. Live product scanning is on, while store comparison stays paused until the retailer feed is ready.
+          Add groceries by name or UPC barcode, then save your own price checks. Live product scanning is on, and barcode matches can now pull community price data from Open Prices.
         </p>
       </div>
+
+      {upcStatus ? (
+        <div className="mb-4 rounded-[20px] border border-white/8 bg-black/20 p-3 text-sm text-zinc-300">
+          <p className="font-medium text-white">UPC sources</p>
+          <p className="mt-2">{upcStatus.openFoodFacts?.message}</p>
+          <p className="mt-1">{upcStatus.openPrices?.message}</p>
+          <p className="mt-1">
+            {upcStatus.openNutrition?.reachable
+              ? upcStatus.openNutrition.message
+              : upcStatus.openNutrition?.configured
+                ? `OpenNutrition fallback is configured but unavailable right now: ${upcStatus.openNutrition.message}`
+                : upcStatus.openNutrition?.message ?? "OpenNutrition fallback status is unavailable."}
+          </p>
+        </div>
+      ) : null}
 
       <div className="mb-4 grid grid-cols-2 gap-2">
         <button
@@ -200,7 +241,7 @@ export function AddItemForm({
 
             {!canComparePrices ? (
               <div className="rounded-[20px] border border-amber-300/20 bg-amber-300/10 p-3 text-sm text-amber-100">
-                UPC scanning is enabled for product tracking. Store-by-store price comparison will return once the live retailer feed is connected.
+                UPC scanning is enabled for product tracking. Open Prices community data can seed live price records even before you add manual store checks.
               </div>
             ) : null}
 
@@ -209,7 +250,7 @@ export function AddItemForm({
                 ? "Reading the UPC from your live camera..."
                 : isLookingUpBarcode
                 ? "Checking barcode..."
-                : barcodeFeedback ?? "Use a packaged food barcode to prefill the grocery item. Live scanning identifies the product, and manual prices stay available while comparison is paused."}
+                : barcodeFeedback ?? "Use a packaged food barcode to prefill the grocery item. Live scanning identifies the product, and Open Prices can seed store records when they exist."}
             </div>
           </>
         ) : null}
@@ -280,6 +321,7 @@ export function AddItemForm({
               category: detectedCategory,
               matchedProductId,
               preferredStore: preferredStore || undefined,
+              initialPriceRecords: detectedPrices,
             });
             setName("");
             setQuantity("1");
@@ -289,6 +331,7 @@ export function AddItemForm({
             setBarcode("");
             setMatchedProductId(undefined);
             setDetectedCategory(undefined);
+            setDetectedPrices([]);
             setBarcodeFeedback(null);
             setEntryMode("name");
           }}

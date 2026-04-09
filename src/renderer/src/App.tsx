@@ -93,10 +93,15 @@ function mealTotals(meals: PlannerMeal[]) {
   );
 }
 
-function nutritionEntryToMeal(entry: NutritionEntry, id?: string): PlannerMeal {
+function nextMealType(count: number) {
+  const order = ["Breakfast", "Lunch", "Dinner", "Snack"];
+  return order[count % order.length] ?? "Meal";
+}
+
+function nutritionEntryToMeal(entry: NutritionEntry, id?: string, type?: string): PlannerMeal {
   return {
     id: id ?? entry.id ?? crypto.randomUUID(),
-    type: "Meal",
+    type: type ?? "Meal",
     title: entry.foodName,
     calories: Math.round(entry.calories),
     protein: formatMacro(entry.protein),
@@ -326,6 +331,23 @@ function App() {
   const [editingMealId, setEditingMealId] = useState<string | null>(null);
   const [selectedGroceryItemId, setSelectedGroceryItemId] = useState<string | null>(null);
   const [showStoreComparison, setShowStoreComparison] = useState(false);
+  const [refreshingGroceryPriceId, setRefreshingGroceryPriceId] = useState<string | null>(null);
+  const [upcSourceStatus, setUpcSourceStatus] = useState<{
+    openNutrition?: {
+      configured: boolean;
+      reachable: boolean;
+      sourceLabel: string;
+      message: string;
+    };
+    openFoodFacts?: {
+      sourceLabel: string;
+      message: string;
+    };
+    openPrices?: {
+      sourceLabel: string;
+      message: string;
+    };
+  } | null>(null);
   const [nearbyRetailerNames, setNearbyRetailerNames] = useState<string[]>([]);
   const [retailerFeedStatus, setRetailerFeedStatus] = useState<NearbyRetailersResponse["source"]>("disabled");
   const [retailerFeedMessage, setRetailerFeedMessage] = useState<string | null>(null);
@@ -369,6 +391,32 @@ function App() {
       .finally(() => {
         if (!cancelled) {
           setDailyVerseLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void fetch("/api/grocery/upc-status")
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error("Unable to load UPC source status.");
+        }
+        return (await response.json()) as typeof upcSourceStatus;
+      })
+      .then((result) => {
+        if (!cancelled) {
+          setUpcSourceStatus(result);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setUpcSourceStatus(null);
         }
       });
 
@@ -559,7 +607,7 @@ function App() {
   const todayIndex = Math.max(normalizedPlanner.findIndex((day) => day.day === todayLabel()), 0);
   const safeDayIndex = Math.min(dayIndex, Math.max(normalizedPlanner.length - 1, 0));
   const isPremiumSubscriber = user?.subscriptionTier === "premium";
-  const isLivePriceComparisonEnabled = false;
+  const isLivePriceComparisonEnabled = true;
   const canCompareGroceryPrices = isPremiumSubscriber && isLivePriceComparisonEnabled;
   const canUseLiveGroceryScanner = true;
   const todayMeals = normalizedPlanner[todayIndex]?.meals ?? [];
@@ -584,7 +632,9 @@ function App() {
   const selectedStoreName = selectedGroceryItem?.preferredStore ?? selectedGroceryItem?.latestPrices[0]?.storeName ?? "";
   const selectedItemHistory = selectedGroceryItem
     ? canCompareGroceryPrices
-      ? groceryPriceService.getPriceHistory(selectedGroceryItem.name, selectedStoreName, manualPriceRecords)
+      ? [...selectedGroceryItem.latestPrices]
+          .filter((record) => !selectedStoreName || record.storeName === selectedStoreName)
+          .sort((a, b) => new Date(a.checkedAt).getTime() - new Date(b.checkedAt).getTime())
       : getManualPriceHistory(selectedGroceryItem.name, selectedStoreName, manualPriceRecords)
     : [];
   const weeklyEstimate = cheapestStoreResult?.totalCost ?? mixAndMatchTotal;
@@ -1373,7 +1423,15 @@ function App() {
                     : meal,
                 ),
               }
-            : { ...day, meals: [...day.meals, ...pendingEntries.map((entry) => nutritionEntryToMeal(entry))] },
+            : {
+                ...day,
+                meals: [
+                  ...day.meals,
+                  ...pendingEntries.map((entry, entryIndex) =>
+                    nutritionEntryToMeal(entry, undefined, nextMealType(day.meals.length + entryIndex)),
+                  ),
+                ],
+              },
       ),
     );
     resetDetectionState();
@@ -1407,6 +1465,7 @@ function App() {
     category?: string;
     matchedProductId?: string;
     preferredStore?: string;
+    initialPriceRecords?: PriceRecord[];
   }) {
     const cleanedBarcode = cleanBarcode(input.barcode);
     const matchedProduct = productMatchingService.matchItemToProduct({
@@ -1428,7 +1487,7 @@ function App() {
       preferredStore: input.preferredStore,
       category: input.category ?? matchedProduct?.category,
       matchedProductId: input.matchedProductId ?? matchedProduct?.id,
-      latestPrices: [],
+      latestPrices: input.initialPriceRecords ?? [],
     };
 
     if (cleanedBarcode && input.name.trim()) {
@@ -1499,6 +1558,52 @@ function App() {
       ),
     );
     setShowStoreComparison(true);
+  }
+
+  async function refreshGroceryItemPrices(item: GroceryListItem) {
+    const cleanedBarcode = cleanBarcode(item.barcode);
+    if (!cleanedBarcode) {
+      setFeedback("This grocery item does not have a UPC yet, so there is no live Open Prices lookup to refresh.");
+      return;
+    }
+
+    setRefreshingGroceryPriceId(item.id);
+    try {
+      const latestPrices = await groceryPriceService.fetchLivePricesForBarcode(cleanedBarcode);
+
+      updateGroceryLists((lists) =>
+        lists.map((list, index) =>
+          index !== 0
+            ? list
+            : {
+                ...list,
+                updatedAt: new Date().toISOString(),
+                items: list.items.map((entry) =>
+                  entry.id !== item.id
+                    ? entry
+                    : {
+                        ...entry,
+                        latestPrices: [
+                          ...entry.latestPrices.filter((record) => record.source === "manual"),
+                          ...latestPrices,
+                        ],
+                      },
+                ),
+              },
+        ),
+      );
+
+      setFeedback(
+        latestPrices.length
+          ? `Updated ${latestPrices.length} live Open Prices ${latestPrices.length === 1 ? "record" : "records"} for ${item.name}.`
+          : `No live Open Prices matches were found for ${item.name} right now.`,
+      );
+      setShowStoreComparison(true);
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : "Unable to refresh live grocery prices right now.");
+    } finally {
+      setRefreshingGroceryPriceId(null);
+    }
   }
 
   function renderScreen() {
@@ -2162,6 +2267,7 @@ function App() {
             isPremiumSubscriber={isPremiumSubscriber}
             canUseLiveScanner={canUseLiveGroceryScanner}
             canComparePrices={canCompareGroceryPrices}
+            upcStatus={upcSourceStatus}
             onUpgradeToPremium={handleUpgradeToPremium}
             storeOptions={availableRetailerNames}
           />
@@ -2207,12 +2313,10 @@ function App() {
 
           <button
             type="button"
-            onClick={() => {
-              setFeedback("Live store comparison is temporarily disabled while the retailer pricing feed is being rebuilt.");
-            }}
+            onClick={() => setShowStoreComparison((current) => !current)}
             className="w-full rounded-[22px] border border-white/10 bg-black/20 px-4 py-3 text-sm font-semibold text-zinc-100"
           >
-            Store comparison coming soon
+            {showStoreComparison ? "Hide store comparison" : "Show store comparison"}
           </button>
         </GroceryListCard>
 
@@ -2303,7 +2407,7 @@ function App() {
                               {formatMoney(groceryPriceService.estimateItemTotal(selectedGroceryItem, record))}
                             </p>
                             <p className="mt-1 text-xs text-zinc-500">
-                              {record.source === "manual" ? "Manual check" : "Estimated feed"}
+                              {record.source === "manual" ? "Manual check" : record.source === "open-prices" ? "Open Prices" : "Estimated feed"}
                             </p>
                           </div>
                         </div>
@@ -2321,9 +2425,20 @@ function App() {
 
               {!canCompareGroceryPrices ? (
                 <div className="rounded-[20px] border border-emerald-300/15 bg-emerald-400/8 p-4 text-sm text-zinc-200">
-                  Product tracking by UPC is active. Manual price checks stay available while automatic comparison is paused.
+                  Product tracking by UPC is active. Live Open Prices records are being collected in the background, and manual price checks still work for every item.
                 </div>
               ) : null}
+
+              <button
+                type="button"
+                onClick={() => {
+                  void refreshGroceryItemPrices(selectedGroceryItem);
+                }}
+                disabled={refreshingGroceryPriceId === selectedGroceryItem.id}
+                className="w-full rounded-[22px] border border-white/10 bg-black/20 px-4 py-3 text-sm font-semibold text-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {refreshingGroceryPriceId === selectedGroceryItem.id ? "Refreshing live prices..." : "Refresh live prices"}
+              </button>
 
               <PriceHistoryCard
                 itemName={selectedGroceryItem.name}

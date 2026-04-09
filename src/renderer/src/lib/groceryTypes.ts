@@ -12,7 +12,7 @@ export type GroceryUnit =
   | "pack"
   | "serving";
 
-export type PriceSource = "mock" | "manual" | "retailer-api" | "user-submitted";
+export type PriceSource = "mock" | "manual" | "retailer-api" | "user-submitted" | "open-prices";
 
 export type GroceryList = {
   id: string;

@@ -1,6 +1,6 @@
 import { createInitialPlanner, normalizePlanner, type PlannerDay } from "@/data";
 import { createInitialGroceryLists, normalizeGroceryLists, normalizeManualPriceRecords } from "@/lib/groceryState";
-import type { GroceryList, PriceRecord } from "@/lib/groceryTypes";
+import type { GroceryList, ManualBarcodeEntry, PriceRecord } from "@/lib/groceryTypes";
 
 const ACCOUNTS_KEY = "vitalyx.accounts.v1";
 const SESSION_KEY = "vitalyx.session.v1";
@@ -67,6 +67,7 @@ export type UserAppData = {
   planner: PlannerDay[];
   groceryLists: GroceryList[];
   manualPriceRecords: PriceRecord[];
+  manualBarcodeEntries: ManualBarcodeEntry[];
   workoutLog: WorkoutLogEntry[];
   workoutPlans: WorkoutPlanEntry[];
   cardioLog: CardioLogEntry[];
@@ -97,6 +98,10 @@ export type AccountAuditRecord = {
 
 function uid() {
   return crypto.randomUUID();
+}
+
+function cleanBarcode(value: string) {
+  return value.replace(/[^\d]/g, "");
 }
 
 function weekdayFromIso(value: string) {
@@ -184,6 +189,7 @@ export function createInitialUserData(): UserAppData {
     planner: createInitialPlanner(),
     groceryLists: createInitialGroceryLists(),
     manualPriceRecords: [],
+    manualBarcodeEntries: [],
     workoutLog: [],
     workoutPlans: [],
     cardioLog: [],
@@ -445,6 +451,47 @@ export function loadUserData(userId: string) {
     planner: normalizePlanner(stored.planner),
     groceryLists: normalizeGroceryLists(stored.groceryLists),
     manualPriceRecords: normalizeManualPriceRecords(stored.manualPriceRecords),
+    manualBarcodeEntries: Array.isArray(stored.manualBarcodeEntries)
+      ? stored.manualBarcodeEntries
+          .filter((entry) => Boolean(entry && typeof entry === "object"))
+          .map((entry) => {
+            const barcode = typeof entry.barcode === "string" ? cleanBarcode(entry.barcode) : "";
+            const name = typeof entry.name === "string" ? entry.name.trim() : "";
+            const normalizedName =
+              typeof entry.normalizedName === "string"
+                ? entry.normalizedName.trim().toLowerCase()
+                : name.toLowerCase().trim();
+
+            return {
+              id: typeof entry.id === "string" ? entry.id : uid(),
+              barcode,
+              name: name || "Saved UPC item",
+              normalizedName,
+              brand: typeof entry.brand === "string" ? entry.brand : undefined,
+              category: typeof entry.category === "string" ? entry.category : undefined,
+              suggestedUnit:
+                entry.suggestedUnit === "lb" ||
+                entry.suggestedUnit === "oz" ||
+                entry.suggestedUnit === "g" ||
+                entry.suggestedUnit === "kg" ||
+                entry.suggestedUnit === "piece" ||
+                entry.suggestedUnit === "dozen" ||
+                entry.suggestedUnit === "cup" ||
+                entry.suggestedUnit === "bag" ||
+                entry.suggestedUnit === "tub" ||
+                entry.suggestedUnit === "head" ||
+                entry.suggestedUnit === "pack" ||
+                entry.suggestedUnit === "serving"
+                  ? entry.suggestedUnit
+                  : "piece",
+              matchedProductId: typeof entry.matchedProductId === "string" ? entry.matchedProductId : undefined,
+              createdAt: typeof entry.createdAt === "string" ? entry.createdAt : new Date().toISOString(),
+              updatedAt: typeof entry.updatedAt === "string" ? entry.updatedAt : new Date().toISOString(),
+              lastUsedAt: typeof entry.lastUsedAt === "string" ? entry.lastUsedAt : undefined,
+            } satisfies ManualBarcodeEntry;
+          })
+          .filter((entry) => Boolean(entry.barcode))
+      : [],
     workoutLog: Array.isArray(stored.workoutLog)
       ? stored.workoutLog
           .filter((entry) => Boolean(entry && typeof entry === "object"))

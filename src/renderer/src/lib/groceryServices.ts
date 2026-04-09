@@ -1,8 +1,8 @@
 import { groceryProducts, mockPriceHistory, mockStores } from "@/lib/groceryMockData";
-import { getOpenFoodFactsNutrition } from "@/lib/openFoodFacts";
 import type {
   GroceryList,
   GroceryListItem,
+  ManualBarcodeEntry,
   NormalizedProduct,
   PerItemBestPrice,
   PriceComparisonResult,
@@ -40,6 +40,15 @@ function compareScore(needle: string, product: NormalizedProduct) {
 function cleanBarcode(value: string) {
   return value.replace(/[^\d]/g, "");
 }
+
+type BarcodeLookupProviderMatch = {
+  barcode: string;
+  name: string;
+  brand?: string;
+  category?: string;
+  suggestedUnit: "piece";
+  sourceLabel: string;
+};
 
 function expandBarcodeCandidates(value: string) {
   const cleaned = cleanBarcode(value);
@@ -289,18 +298,36 @@ export class GroceryPriceService {
     private readonly comparisonService: StoreComparisonService,
   ) {}
 
-  async lookupBarcode(barcode: string) {
+  async lookupBarcode(barcode: string, manualBarcodeEntries: ManualBarcodeEntry[] = []) {
     const normalizedBarcode = cleanBarcode(barcode);
     if (!normalizedBarcode) {
       return null;
     }
 
     const barcodeCandidates = expandBarcodeCandidates(normalizedBarcode);
-    let offProduct = null;
+    const manualMatch = manualBarcodeEntries.find((entry) => barcodeCandidates.includes(cleanBarcode(entry.barcode)));
+    if (manualMatch) {
+      return {
+        barcode: manualMatch.barcode,
+        name: manualMatch.name,
+        brand: manualMatch.brand,
+        category: manualMatch.category ?? "Saved grocery item",
+        suggestedUnit: manualMatch.suggestedUnit,
+        matchedProductId: manualMatch.matchedProductId,
+        sourceLabel: "Your Vitalyx UPC memory",
+      };
+    }
+
+    let providerMatch: BarcodeLookupProviderMatch | null = null;
 
     for (const candidate of barcodeCandidates) {
-      offProduct = await getOpenFoodFactsNutrition(candidate).catch(() => null);
-      if (offProduct) {
+      const response = await fetch(`/api/grocery/upc-lookup?barcode=${encodeURIComponent(candidate)}`);
+      if (!response.ok) {
+        continue;
+      }
+
+      providerMatch = (await response.json()) as BarcodeLookupProviderMatch;
+      if (providerMatch) {
         break;
       }
     }
@@ -308,23 +335,23 @@ export class GroceryPriceService {
     const matchedMockProduct = groceryProducts.find((product) => barcodeCandidates.includes(product.barcode ?? ""));
     const matchedCatalogProduct =
       matchedMockProduct ??
-      (offProduct
+      (providerMatch
         ? this.matchingService.matchItemToProduct({
-            name: offProduct.name,
-            brand: offProduct.brand,
-            barcode: offProduct.barcode,
+            name: providerMatch.name,
+            brand: providerMatch.brand,
+            barcode: providerMatch.barcode,
           })
         : null);
 
-    if (offProduct) {
+    if (providerMatch) {
       return {
-        barcode: matchedCatalogProduct?.barcode ?? barcodeCandidates[0] ?? normalizedBarcode,
-        name: offProduct.name,
-        brand: offProduct.brand ?? matchedCatalogProduct?.brand,
-        category: matchedCatalogProduct?.category ?? offProduct.category ?? "Packaged grocery",
+        barcode: matchedCatalogProduct?.barcode ?? providerMatch.barcode ?? barcodeCandidates[0] ?? normalizedBarcode,
+        name: providerMatch.name,
+        brand: providerMatch.brand ?? matchedCatalogProduct?.brand,
+        category: matchedCatalogProduct?.category ?? providerMatch.category ?? "Packaged grocery",
         suggestedUnit: "piece" as const,
         matchedProductId: matchedCatalogProduct?.id,
-        sourceLabel: matchedCatalogProduct ? "Open Food Facts + Vitalyx match" : "Open Food Facts",
+        sourceLabel: matchedCatalogProduct ? `${providerMatch.sourceLabel} + Vitalyx match` : providerMatch.sourceLabel,
       };
     }
 

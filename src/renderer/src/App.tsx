@@ -67,6 +67,7 @@ import { getDailyVerse, type DailyVerse } from "@/lib/dailyVerse";
 import { startPremiumCheckout } from "@/lib/billing";
 import { hasSupabaseConfig } from "@/lib/supabase";
 import type { GroceryList, GroceryListItem, GroceryUnit, PriceRecord } from "@/lib/groceryTypes";
+import type { ManualBarcodeEntry } from "@/lib/groceryTypes";
 import type { MobileTab } from "@/components/BottomNav";
 const tabMeta: Record<MobileTab, { title: string; subtitle: string }> = {
   home: { title: "Vitalyx", subtitle: "Building your Wealth starts with your Health" },
@@ -262,6 +263,17 @@ function getManualPriceHistory(itemName: string, storeName: string, manualPriceR
       return sameItem && sameStore;
     })
     .sort((a, b) => new Date(a.checkedAt).getTime() - new Date(b.checkedAt).getTime());
+}
+
+function createFallbackUserData() {
+  return {
+    ...createInitialUserData(),
+    usageDates: [todayKey()],
+  };
+}
+
+function cleanBarcode(value?: string) {
+  return (value ?? "").replace(/[^\d]/g, "");
 }
 
 function App() {
@@ -503,6 +515,7 @@ function App() {
   const normalizedPlanner = planner.length ? planner : createInitialPlanner();
   const groceryLists = appData?.groceryLists ?? createInitialGroceryLists();
   const manualPriceRecords = appData?.manualPriceRecords ?? [];
+  const manualBarcodeEntries = appData?.manualBarcodeEntries ?? [];
   const workoutLog = appData?.workoutLog ?? [];
   const workoutPlans = appData?.workoutPlans ?? [];
   const cardioLog = appData?.cardioLog ?? [];
@@ -659,36 +672,14 @@ function App() {
 
   function updatePlanner(updater: (value: UserAppData["planner"]) => UserAppData["planner"]) {
     setAppData((current) => {
-      const base = current ?? {
-        planner: createInitialPlanner(),
-        groceryLists: createInitialGroceryLists(),
-        manualPriceRecords: [],
-        workoutLog: [],
-        workoutPlans: [],
-        cardioLog: [],
-        favoriteExerciseIds: [],
-        recentExerciseIds: [],
-        recentExerciseSearches: [],
-        usageDates: [todayKey()],
-      };
+      const base = current ?? createFallbackUserData();
       return { ...base, planner: updater(base.planner) };
     });
   }
 
   function updateGroceryLists(updater: (lists: GroceryList[]) => GroceryList[]) {
     setAppData((current) => {
-      const base = current ?? {
-        planner: createInitialPlanner(),
-        groceryLists: createInitialGroceryLists(),
-        manualPriceRecords: [],
-        workoutLog: [],
-        workoutPlans: [],
-        cardioLog: [],
-        favoriteExerciseIds: [],
-        recentExerciseIds: [],
-        recentExerciseSearches: [],
-        usageDates: [todayKey()],
-      };
+      const base = current ?? createFallbackUserData();
       const nextLists = hydrateGroceryLists(updater(base.groceryLists), base.manualPriceRecords);
       return { ...base, groceryLists: nextLists };
     });
@@ -696,18 +687,7 @@ function App() {
 
   function updateManualPriceRecords(updater: (records: PriceRecord[]) => PriceRecord[]) {
     setAppData((current) => {
-      const base = current ?? {
-        planner: createInitialPlanner(),
-        groceryLists: createInitialGroceryLists(),
-        manualPriceRecords: [],
-        workoutLog: [],
-        workoutPlans: [],
-        cardioLog: [],
-        favoriteExerciseIds: [],
-        recentExerciseIds: [],
-        recentExerciseSearches: [],
-        usageDates: [todayKey()],
-      };
+      const base = current ?? createFallbackUserData();
       const manualPriceRecords = updater(base.manualPriceRecords);
       return {
         ...base,
@@ -717,56 +697,33 @@ function App() {
     });
   }
 
+  function updateManualBarcodeEntries(updater: (entries: ManualBarcodeEntry[]) => ManualBarcodeEntry[]) {
+    setAppData((current) => {
+      const base = current ?? createFallbackUserData();
+      return {
+        ...base,
+        manualBarcodeEntries: updater(base.manualBarcodeEntries),
+      };
+    });
+  }
+
   function updateWorkoutLog(updater: (entries: WorkoutLogEntry[]) => WorkoutLogEntry[]) {
     setAppData((current) => {
-      const base = current ?? {
-        planner: createInitialPlanner(),
-        groceryLists: createInitialGroceryLists(),
-        manualPriceRecords: [],
-        workoutLog: [],
-        workoutPlans: [],
-        cardioLog: [],
-        favoriteExerciseIds: [],
-        recentExerciseIds: [],
-        recentExerciseSearches: [],
-        usageDates: [todayKey()],
-      };
+      const base = current ?? createFallbackUserData();
       return { ...base, workoutLog: updater(base.workoutLog) };
     });
   }
 
   function updateWorkoutPlans(updater: (entries: WorkoutPlanEntry[]) => WorkoutPlanEntry[]) {
     setAppData((current) => {
-      const base = current ?? {
-        planner: createInitialPlanner(),
-        groceryLists: createInitialGroceryLists(),
-        manualPriceRecords: [],
-        workoutLog: [],
-        workoutPlans: [],
-        cardioLog: [],
-        favoriteExerciseIds: [],
-        recentExerciseIds: [],
-        recentExerciseSearches: [],
-        usageDates: [todayKey()],
-      };
+      const base = current ?? createFallbackUserData();
       return { ...base, workoutPlans: updater(base.workoutPlans) };
     });
   }
 
   function updateCardioLog(updater: (entries: CardioLogEntry[]) => CardioLogEntry[]) {
     setAppData((current) => {
-      const base = current ?? {
-        planner: createInitialPlanner(),
-        groceryLists: createInitialGroceryLists(),
-        manualPriceRecords: [],
-        workoutLog: [],
-        workoutPlans: [],
-        cardioLog: [],
-        favoriteExerciseIds: [],
-        recentExerciseIds: [],
-        recentExerciseSearches: [],
-        usageDates: [todayKey()],
-      };
+      const base = current ?? createFallbackUserData();
       return { ...base, cardioLog: updater(base.cardioLog) };
     });
   }
@@ -778,18 +735,7 @@ function App() {
     >,
   ) {
     setAppData((current) => {
-      const base = current ?? {
-        planner: createInitialPlanner(),
-        groceryLists: createInitialGroceryLists(),
-        manualPriceRecords: [],
-        workoutLog: [],
-        workoutPlans: [],
-        cardioLog: [],
-        favoriteExerciseIds: [],
-        recentExerciseIds: [],
-        recentExerciseSearches: [],
-        usageDates: [todayKey()],
-      };
+      const base = current ?? createFallbackUserData();
       return { ...base, ...updater(base) };
     });
   }
@@ -1405,10 +1351,11 @@ function App() {
     matchedProductId?: string;
     preferredStore?: string;
   }) {
+    const cleanedBarcode = cleanBarcode(input.barcode);
     const matchedProduct = productMatchingService.matchItemToProduct({
       name: input.name,
       brand: input.brand,
-      barcode: input.barcode,
+      barcode: cleanedBarcode,
       matchedProductId: input.matchedProductId,
     });
     const now = new Date().toISOString();
@@ -1417,15 +1364,38 @@ function App() {
       name: input.name,
       normalizedName: productMatchingService.normalizeItemName(input.name),
       quantity: input.quantity,
-      unit: input.barcode ? "piece" : input.unit,
-      barcode: input.barcode,
-      pricingMode: input.barcode ? "item" : "unit",
+      unit: cleanedBarcode ? "piece" : input.unit,
+      barcode: cleanedBarcode || undefined,
+      pricingMode: cleanedBarcode ? "item" : "unit",
       brand: input.brand,
       preferredStore: input.preferredStore,
       category: input.category ?? matchedProduct?.category,
       matchedProductId: input.matchedProductId ?? matchedProduct?.id,
       latestPrices: [],
     };
+
+    if (cleanedBarcode && input.name.trim()) {
+      updateManualBarcodeEntries((entries) => {
+        const existing = entries.find((entry) => cleanBarcode(entry.barcode) === cleanedBarcode);
+        const nextEntry: ManualBarcodeEntry = {
+          id: existing?.id ?? crypto.randomUUID(),
+          barcode: cleanedBarcode,
+          name: input.name.trim(),
+          normalizedName: productMatchingService.normalizeItemName(input.name),
+          brand: input.brand?.trim() || undefined,
+          category: input.category ?? matchedProduct?.category,
+          suggestedUnit: "piece",
+          matchedProductId: input.matchedProductId ?? matchedProduct?.id,
+          createdAt: existing?.createdAt ?? now,
+          updatedAt: now,
+          lastUsedAt: now,
+        };
+
+        return existing
+          ? entries.map((entry) => (entry.id === existing.id ? nextEntry : entry))
+          : [nextEntry, ...entries].slice(0, 500);
+      });
+    }
 
     updateGroceryLists((lists) =>
       lists.map((list, index) =>
@@ -1907,7 +1877,7 @@ function App() {
         >
           <AddItemForm
             onAdd={addGroceryItem}
-            onBarcodeLookup={(barcode) => groceryPriceService.lookupBarcode(barcode)}
+            onBarcodeLookup={(barcode) => groceryPriceService.lookupBarcode(barcode, manualBarcodeEntries)}
             isPremiumSubscriber={isPremiumSubscriber}
             canUseLiveScanner={canUseLiveGroceryScanner}
             canComparePrices={canCompareGroceryPrices}

@@ -37,6 +37,20 @@ export type GroceryListItem = {
   latestPrices: PriceRecord[];
 };
 
+export type ManualBarcodeEntry = {
+  id: string;
+  barcode: string;
+  name: string;
+  normalizedName: string;
+  brand?: string;
+  category?: string;
+  suggestedUnit: GroceryUnit;
+  matchedProductId?: string;
+  createdAt: string;
+  updatedAt: string;
+  lastUsedAt?: string;
+};
+
 export type PriceRecord = {
   id: string;
   productId: string;

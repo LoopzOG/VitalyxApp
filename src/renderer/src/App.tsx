@@ -80,6 +80,10 @@ function todayLabel() {
   return new Intl.DateTimeFormat(undefined, { weekday: "long" }).format(new Date());
 }
 
+function todayPlannerIndex() {
+  return Math.max(["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].indexOf(todayLabel()), 0);
+}
+
 function mealTotals(meals: PlannerMeal[]) {
   return meals.reduce(
     (acc, meal) => {
@@ -293,7 +297,7 @@ function App() {
   const [authError, setAuthError] = useState<string | null>(null);
   const [authInfo, setAuthInfo] = useState<string | null>(null);
   const [authMode, setAuthMode] = useState<"signin" | "register" | "forgot-password" | "reset-password">("signin");
-  const [dayIndex, setDayIndex] = useState(0);
+  const [dayIndex, setDayIndex] = useState(() => todayPlannerIndex());
   const [sessionStarted, setSessionStarted] = useState(false);
   const [completedSets, setCompletedSets] = useState(0);
   const [savedAt, setSavedAt] = useState<string | null>(null);
@@ -676,6 +680,9 @@ function App() {
       }),
     [exerciseSearchQuery, exerciseTab, selectedExerciseCategory, selectedEquipmentTag, selectedMuscleTag],
   );
+  useEffect(() => {
+    setDayIndex(todayIndex);
+  }, [todayIndex]);
   const groupedExerciseResults = useMemo(() => groupExerciseResults(exerciseResults.slice(0, 36)), [exerciseResults]);
   const recentExercises = recentExerciseIds
     .map((id) => exerciseMap.get(id))

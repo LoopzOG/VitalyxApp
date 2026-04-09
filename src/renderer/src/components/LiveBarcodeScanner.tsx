@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from "react";
-import { Camera, LoaderCircle, ScanLine, X } from "lucide-react";
+import { Camera, ImagePlus, LoaderCircle, ScanLine, X } from "lucide-react";
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
+import { scanBarcodeFromImage } from "@/lib/barcodeScanner";
 
 type LiveBarcodeScannerProps = {
   open: boolean;
@@ -13,16 +14,16 @@ const supportedBarcodeFormats = [
   Html5QrcodeSupportedFormats.UPC_E,
   Html5QrcodeSupportedFormats.EAN_13,
   Html5QrcodeSupportedFormats.EAN_8,
-  Html5QrcodeSupportedFormats.CODE_128,
-  Html5QrcodeSupportedFormats.CODE_39,
 ];
 
 export function LiveBarcodeScanner({ open, onDetected, onClose }: LiveBarcodeScannerProps) {
   const scannerId = useId().replace(/:/g, "");
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const handlingDetectionRef = useRef(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [status, setStatus] = useState("Point the camera at a UPC barcode.");
   const [isStarting, setIsStarting] = useState(false);
+  const [isScanningPhoto, setIsScanningPhoto] = useState(false);
 
   useEffect(() => {
     if (!open || typeof document === "undefined") {
@@ -52,11 +53,10 @@ export function LiveBarcodeScanner({ open, onDetected, onClose }: LiveBarcodeSca
         await scanner.start(
           preferredCamera,
           {
-            fps: 6,
-            aspectRatio: 1.777778,
+            fps: 10,
             qrbox: (viewfinderWidth, viewfinderHeight) => {
-              const width = Math.min(viewfinderWidth * 0.96, 420);
-              const height = Math.min(Math.max(viewfinderHeight * 0.2, 96), 140);
+              const width = Math.min(viewfinderWidth * 0.88, 360);
+              const height = Math.min(Math.max(viewfinderHeight * 0.24, 110), 170);
               return {
                 width: Math.floor(width),
                 height: Math.floor(height),
@@ -64,7 +64,7 @@ export function LiveBarcodeScanner({ open, onDetected, onClose }: LiveBarcodeSca
             },
             disableFlip: true,
             videoConstraints: {
-              facingMode: "environment",
+              facingMode: { ideal: "environment" },
               width: { ideal: 1920 },
               height: { ideal: 1080 },
             },
@@ -94,7 +94,7 @@ export function LiveBarcodeScanner({ open, onDetected, onClose }: LiveBarcodeSca
         );
 
         if (!cancelled) {
-          setStatus("Scanner is live. Hold the barcode steady and fill the guide from left to right.");
+          setStatus("Scanner is live. Hold the barcode steady, fill the guide left to right, and move slightly closer if it does not catch.");
         }
       } catch (error) {
         if (!cancelled) {
@@ -143,6 +143,33 @@ export function LiveBarcodeScanner({ open, onDetected, onClose }: LiveBarcodeSca
     return null;
   }
 
+  async function handlePhotoSelected(file: File) {
+    setIsScanningPhoto(true);
+    setStatus("Reading barcode from photo...");
+
+    try {
+      const result = await scanBarcodeFromImage(file);
+      const cleaned = result?.replace(/[^\d]/g, "").trim();
+
+      if (!cleaned) {
+        setStatus("No UPC was found in that photo. Try a sharper image with the barcode filling more of the frame.");
+        return;
+      }
+
+      handlingDetectionRef.current = true;
+      setStatus(`Detected ${cleaned} from photo. Closing scanner...`);
+      onClose();
+      void Promise.resolve(onDetected(cleaned));
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Unable to read barcode from photo.");
+    } finally {
+      setIsScanningPhoto(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-[70] bg-black/75 px-4 py-6 backdrop-blur-sm">
       <div className="mx-auto flex h-full w-full max-w-md flex-col rounded-[30px] border border-white/10 bg-zinc-950 shadow-[0_30px_90px_rgba(0,0,0,0.45)]">
@@ -162,6 +189,20 @@ export function LiveBarcodeScanner({ open, onDetected, onClose }: LiveBarcodeSca
         </div>
 
         <div className="flex-1 px-5 py-5">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (!file) {
+                return;
+              }
+              void handlePhotoSelected(file);
+            }}
+          />
           <div className="relative overflow-hidden rounded-[26px] border border-white/10 bg-black">
             <div id={scannerId} className="min-h-[360px] w-full bg-black" />
             <div className="pointer-events-none absolute inset-x-6 top-1/2 h-28 -translate-y-1/2 rounded-[24px] border-2 border-emerald-300/70 shadow-[0_0_0_9999px_rgba(0,0,0,0.28)]" />
@@ -174,7 +215,7 @@ export function LiveBarcodeScanner({ open, onDetected, onClose }: LiveBarcodeSca
               <div>
                 <p>{status}</p>
                 <p className="mt-2 text-emerald-100/75">
-                  Use good lighting and center the barcode inside the guide so Vitalyx can read it without taking a photo.
+                  Use good lighting, keep the barcode horizontal inside the guide, and if live scanning misses it, try the photo fallback below.
                 </p>
               </div>
             </div>
@@ -182,14 +223,25 @@ export function LiveBarcodeScanner({ open, onDetected, onClose }: LiveBarcodeSca
         </div>
 
         <div className="border-t border-white/8 px-5 py-4">
-          <button
-            type="button"
-            onClick={onClose}
-            className="flex w-full items-center justify-center gap-2 rounded-[22px] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-zinc-100"
-          >
-            <ScanLine size={16} />
-            Close scanner
-          </button>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isScanningPhoto}
+              className="flex w-full items-center justify-center gap-2 rounded-[22px] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-zinc-100 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isScanningPhoto ? <LoaderCircle size={16} className="animate-spin" /> : <ImagePlus size={16} />}
+              Scan From Photo
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex w-full items-center justify-center gap-2 rounded-[22px] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-zinc-100"
+            >
+              <ScanLine size={16} />
+              Close scanner
+            </button>
+          </div>
         </div>
       </div>
     </div>

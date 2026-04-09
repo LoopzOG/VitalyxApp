@@ -33,9 +33,11 @@ import { VerseOfTheDayCard } from "@/components/VerseOfTheDayCard";
 import { WorkoutCard } from "@/components/WorkoutCard";
 import {
   createInitialUserData,
+  loadUserData,
   loadPromoCodes,
   generatePremiumPromoCode,
   redeemPromoCode,
+  saveUserData,
   type PromoCodeRecord,
   type SessionUser,
   type UserAppData,
@@ -43,7 +45,7 @@ import {
   type WorkoutLogEntry,
   type WorkoutPlanEntry,
 } from "@/lib/storage";
-import { applyProfileToSessionUser, fetchUserAppData, fetchUserProfile, saveUserAppData, updateUserAccessProfile } from "@/lib/backendAppData";
+import { applyProfileToSessionUser, fetchUserAppDataSnapshot, fetchUserProfile, saveUserAppData, updateUserAccessProfile } from "@/lib/backendAppData";
 import { getAccessToken, getRestoredSessionUser, sendPasswordReset, signInWithPassword, signOutUser, signUpWithPassword, subscribeToAuthChanges, updatePassword } from "@/lib/backendAuth";
 import { createInitialGroceryLists } from "@/lib/groceryState";
 import {
@@ -285,6 +287,53 @@ function cleanBarcode(value?: string) {
   return (value ?? "").replace(/[^\d]/g, "");
 }
 
+function getLocalBackupKey(userId: string) {
+  return `vitalyx.userdata.backup.${userId}`;
+}
+
+function loadLocalAppDataBackup(userId: string): { data: UserAppData; savedAt?: string } | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(getLocalBackupKey(userId));
+    if (!raw) {
+      return null;
+    }
+
+    const parsed = JSON.parse(raw) as { data?: UserAppData; savedAt?: string };
+    if (!parsed?.data) {
+      return null;
+    }
+
+    return {
+      data: parsed.data,
+      savedAt: parsed.savedAt,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function saveLocalAppDataBackup(userId: string, data: UserAppData) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(
+      getLocalBackupKey(userId),
+      JSON.stringify({
+        data,
+        savedAt: new Date().toISOString(),
+      }),
+    );
+  } catch {
+    // Best-effort backup for mobile browsers.
+  }
+}
+
 function App() {
   const [activeTab, setActiveTab] = useState<MobileTab>("home");
   const [moreView, setMoreView] = useState<"default" | "premium" | "profile">("default");
@@ -366,6 +415,50 @@ function App() {
   const [profileSaving, setProfileSaving] = useState(false);
   const photoInputRef = useRef<HTMLInputElement | null>(null);
   const hasLoadedRemoteData = useRef(false);
+  const latestUserRef = useRef<SessionUser | null>(null);
+  const latestAppDataRef = useRef<UserAppData | null>(null);
+
+  useEffect(() => {
+    latestUserRef.current = user;
+  }, [user]);
+
+  useEffect(() => {
+    latestAppDataRef.current = appData;
+  }, [appData]);
+
+  function hydrateAppDataForUser(userId: string, remoteData: UserAppData, remoteUpdatedAt?: string) {
+    const localBackup = loadLocalAppDataBackup(userId);
+    const builtInLocalData = loadUserData(userId);
+    const localBackupTime = localBackup?.savedAt ? new Date(localBackup.savedAt).getTime() : 0;
+    const remoteTime = remoteUpdatedAt ? new Date(remoteUpdatedAt).getTime() : 0;
+    const preferredData = localBackup && localBackupTime > remoteTime ? localBackup.data : remoteData;
+    const currentDay = todayKey();
+    const withUsageDay = preferredData.usageDates.includes(currentDay)
+      ? preferredData
+      : { ...preferredData, usageDates: [...preferredData.usageDates, currentDay] };
+
+    if (!remoteUpdatedAt && builtInLocalData) {
+      const localMealCount = builtInLocalData.planner.reduce((sum, day) => sum + day.meals.length, 0);
+      const remoteMealCount = withUsageDay.planner.reduce((sum, day) => sum + day.meals.length, 0);
+      if (localMealCount > remoteMealCount) {
+        return builtInLocalData;
+      }
+    }
+
+    return withUsageDay;
+  }
+
+  function flushUserAppData(targetUser = latestUserRef.current, targetData = latestAppDataRef.current) {
+    if (!targetUser || !targetData || !hasLoadedRemoteData.current) {
+      return;
+    }
+
+    saveUserData(targetUser.id, targetData);
+    saveLocalAppDataBackup(targetUser.id, targetData);
+    void saveUserAppData(targetUser.id, targetData).catch((error) => {
+      setAuthError(getErrorMessage(error, "Unable to save your data to the backend."));
+    });
+  }
 
   function requireSupabaseConfig() {
     if (hasSupabaseConfig) {
@@ -496,9 +589,8 @@ function App() {
 
         const profile = await fetchUserProfile(restoredUser.id);
         const nextUser = applyProfileToSessionUser(restoredUser, profile);
-        const nextData = await fetchUserAppData(restoredUser.id);
-        const currentDay = todayKey();
-        const hydratedData = nextData.usageDates.includes(currentDay) ? nextData : { ...nextData, usageDates: [...nextData.usageDates, currentDay] };
+        const snapshot = await fetchUserAppDataSnapshot(restoredUser.id);
+        const hydratedData = hydrateAppDataForUser(restoredUser.id, snapshot.data, snapshot.updatedAt);
 
         if (!cancelled) {
           setUser(nextUser);
@@ -535,9 +627,8 @@ function App() {
         try {
           const profile = await fetchUserProfile(nextUser.id);
           const normalizedUser = applyProfileToSessionUser(nextUser, profile);
-          const nextData = await fetchUserAppData(nextUser.id);
-          const currentDay = todayKey();
-          const hydratedData = nextData.usageDates.includes(currentDay) ? nextData : { ...nextData, usageDates: [...nextData.usageDates, currentDay] };
+          const snapshot = await fetchUserAppDataSnapshot(nextUser.id);
+          const hydratedData = hydrateAppDataForUser(nextUser.id, snapshot.data, snapshot.updatedAt);
           setUser(normalizedUser);
           setAppData(hydratedData);
           hasLoadedRemoteData.current = true;
@@ -558,14 +649,35 @@ function App() {
       return;
     }
 
+    saveUserData(user.id, appData);
+    saveLocalAppDataBackup(user.id, appData);
+
     const timeoutId = window.setTimeout(() => {
-      void saveUserAppData(user.id, appData).catch((error) => {
-        setAuthError(getErrorMessage(error, "Unable to save your data to the backend."));
-      });
+      flushUserAppData(user, appData);
     }, 500);
 
     return () => window.clearTimeout(timeoutId);
   }, [user, appData]);
+
+  useEffect(() => {
+    const flushOnVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        flushUserAppData();
+      }
+    };
+
+    const flushOnPageHide = () => {
+      flushUserAppData();
+    };
+
+    document.addEventListener("visibilitychange", flushOnVisibilityChange);
+    window.addEventListener("pagehide", flushOnPageHide);
+
+    return () => {
+      document.removeEventListener("visibilitychange", flushOnVisibilityChange);
+      window.removeEventListener("pagehide", flushOnPageHide);
+    };
+  }, []);
 
   useEffect(() => {
     setProfileDraftName(user?.name ?? "");
@@ -1116,9 +1228,8 @@ function App() {
       };
       const profile = await fetchUserProfile(result.user.id);
       const nextUser = applyProfileToSessionUser(baseUser, profile);
-      const nextData = await fetchUserAppData(result.user.id);
-      const currentDay = todayKey();
-      const hydratedData = nextData.usageDates.includes(currentDay) ? nextData : { ...nextData, usageDates: [...nextData.usageDates, currentDay] };
+      const snapshot = await fetchUserAppDataSnapshot(result.user.id);
+      const hydratedData = hydrateAppDataForUser(result.user.id, snapshot.data, snapshot.updatedAt);
 
       setUser(nextUser);
       setAppData(hydratedData);
@@ -1169,9 +1280,10 @@ function App() {
         },
         profile,
       );
-      const nextData = await fetchUserAppData(result.user.id);
+      const snapshot = await fetchUserAppDataSnapshot(result.user.id);
+      const hydratedData = hydrateAppDataForUser(result.user.id, snapshot.data, snapshot.updatedAt);
       setUser(nextUser);
-      setAppData(nextData);
+      setAppData(hydratedData);
       hasLoadedRemoteData.current = true;
       setAuthInfo("Your account is ready and your secure session has started.");
       setAuthMode("signin");

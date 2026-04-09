@@ -20,6 +20,11 @@ type UserAppDataRow = {
   updated_at?: string;
 };
 
+export type UserAppDataSnapshot = {
+  data: UserAppData;
+  updatedAt?: string;
+};
+
 export async function fetchUserProfile(userId: string) {
   const { data, error } = await supabase
     .from("profiles")
@@ -44,12 +49,20 @@ export function applyProfileToSessionUser(user: SessionUser, profile: ProfileRec
 }
 
 export async function fetchUserAppData(userId: string) {
+  const snapshot = await fetchUserAppDataSnapshot(userId);
+  return snapshot.data;
+}
+
+export async function fetchUserAppDataSnapshot(userId: string): Promise<UserAppDataSnapshot> {
   const { data, error } = await supabase.from("user_app_data").select("user_id, data, updated_at").eq("user_id", userId).maybeSingle<UserAppDataRow>();
   if (error) {
     throw error;
   }
 
-  return data?.data ?? createInitialUserData();
+  return {
+    data: data?.data ?? createInitialUserData(),
+    updatedAt: data?.updated_at,
+  };
 }
 
 export async function saveUserAppData(userId: string, nextData: UserAppData) {

@@ -123,6 +123,17 @@ function formatMoney(value: number) {
   return `$${value.toFixed(2)}`;
 }
 
+function matchesGrocerySearch(item: GroceryListItem, query: string) {
+  const normalizedQuery = productMatchingService.normalizeItemName(query);
+  if (!normalizedQuery) {
+    return true;
+  }
+
+  return [item.name, item.brand, item.barcode, item.category, item.preferredStore]
+    .filter(Boolean)
+    .some((value) => productMatchingService.normalizeItemName(value ?? "").includes(normalizedQuery));
+}
+
 function relativeDateLabel(value?: string) {
   if (!value) {
     return "No updates yet";
@@ -255,6 +266,7 @@ function App() {
   const [user, setUser] = useState<SessionUser | null>(null);
   const [appData, setAppData] = useState<UserAppData | null>(null);
   const [searchValue, setSearchValue] = useState("");
+  const [grocerySearchQuery, setGrocerySearchQuery] = useState("");
   const [isReady, setIsReady] = useState(false);
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
@@ -505,12 +517,13 @@ function App() {
     ...pricedGroceryList,
     items: filterVisibleGroceryPrices(pricedGroceryList.items, isPremiumSubscriber),
   };
+  const filteredGroceryItems = visibleGroceryList.items.filter((item) => matchesGrocerySearch(item, grocerySearchQuery));
   const comparisonResults = isPremiumSubscriber ? storeComparisonService.calculateStoreTotals(pricedGroceryList) : [];
   const cheapestStoreResult = isPremiumSubscriber ? storeComparisonService.getCheapestStore(pricedGroceryList) : null;
   const perItemBestPrices = isPremiumSubscriber ? storeComparisonService.getPerItemBestPrices(pricedGroceryList) : [];
   const mixAndMatchTotal = perItemBestPrices.reduce((total, entry) => total + entry.totalCost, 0);
   const selectedGroceryItem =
-    visibleGroceryList.items.find((item) => item.id === selectedGroceryItemId) ?? visibleGroceryList.items[0] ?? null;
+    filteredGroceryItems.find((item) => item.id === selectedGroceryItemId) ?? filteredGroceryItems[0] ?? null;
   const selectedStoreName = selectedGroceryItem?.preferredStore ?? selectedGroceryItem?.latestPrices[0]?.storeName ?? "";
   const selectedItemHistory = selectedGroceryItem
     ? isPremiumSubscriber
@@ -562,6 +575,22 @@ function App() {
     .filter((exercise): exercise is ExerciseRecord => Boolean(exercise))
     .slice(0, 4);
   const dropdownResults = useMemo(() => exerciseResults.slice(0, 10), [exerciseResults]);
+  const headerSearchValue =
+    activeTab === "meals"
+      ? foodSearchQuery
+      : activeTab === "track"
+        ? exerciseSearchQuery
+        : activeTab === "more"
+          ? grocerySearchQuery
+          : searchValue;
+  const headerSearchPlaceholder =
+    activeTab === "meals"
+      ? "Search foods to detect nutrition..."
+      : activeTab === "track"
+        ? "Search exercises, muscles, equipment..."
+        : activeTab === "more"
+          ? "Search groceries, barcodes, stores..."
+          : "Search meals, lifts, groceries...";
 
   useEffect(() => {
     if (!matchedExercise || matchedExercise.isCardio) {
@@ -572,6 +601,25 @@ function App() {
     setLiftSets((current) => current || "3");
     setLiftReps((current) => current || (matchedExercise.difficulty === "Advanced" ? "5-8" : "8-12"));
   }, [matchedExercise]);
+
+  function handleHeaderSearchChange(value: string) {
+    setSearchValue(value);
+
+    if (activeTab === "meals") {
+      setLoggingMethod("search");
+      setFoodSearchQuery(value);
+      return;
+    }
+
+    if (activeTab === "track") {
+      setExerciseSearchQuery(value);
+      return;
+    }
+
+    if (activeTab === "more") {
+      setGrocerySearchQuery(value);
+    }
+  }
 
   function updatePlanner(updater: (value: UserAppData["planner"]) => UserAppData["planner"]) {
     setAppData((current) => {
@@ -1791,9 +1839,9 @@ function App() {
             onUpgradeToPremium={handleUpgradeToPremium}
           />
 
-          {visibleGroceryList.items.length ? (
+          {filteredGroceryItems.length ? (
             <div className="space-y-3">
-              {visibleGroceryList.items.map((item) => {
+              {filteredGroceryItems.map((item) => {
                 const bestRecord = [...item.latestPrices].sort(
                   (a, b) => groceryPriceService.estimateItemTotal(item, a) - groceryPriceService.estimateItemTotal(item, b),
                 )[0];
@@ -1824,7 +1872,9 @@ function App() {
             </div>
           ) : (
             <div className="rounded-[22px] border border-dashed border-white/10 bg-white/[0.03] p-4 text-sm leading-7 text-zinc-400">
-              Your list is empty. Add staples like chicken breast, eggs, rice, greek yogurt, ground beef, oats, or broccoli to start building your grocery log.
+              {visibleGroceryList.items.length
+                ? "No grocery items match that search yet. Try a product name, barcode, brand, or store."
+                : "Your list is empty. Add staples like chicken breast, eggs, rice, greek yogurt, ground beef, oats, or broccoli to start building your grocery log."}
             </div>
           )}
 
@@ -2127,7 +2177,18 @@ function App() {
           />
         }
       >
-        <MobileAppShell activeTab={activeTab} onNavigate={setActiveTab} title={meta.title} subtitle={meta.subtitle} searchValue={searchValue} onSearchChange={setSearchValue} user={authenticatedUser!}>{renderScreen()}</MobileAppShell>
+        <MobileAppShell
+          activeTab={activeTab}
+          onNavigate={setActiveTab}
+          title={meta.title}
+          subtitle={meta.subtitle}
+          searchValue={headerSearchValue}
+          onSearchChange={handleHeaderSearchChange}
+          searchPlaceholder={headerSearchPlaceholder}
+          user={authenticatedUser!}
+        >
+          {renderScreen()}
+        </MobileAppShell>
       </ProtectedRoute>
     </>
   );

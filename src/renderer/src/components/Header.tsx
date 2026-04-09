@@ -7,10 +7,11 @@ type HeaderProps = {
   subtitle: string;
   searchValue: string;
   onSearchChange: (value: string) => void;
+  searchPlaceholder?: string;
   user: SessionUser;
 };
 
-export function Header({ title, subtitle, searchValue, onSearchChange, user }: HeaderProps) {
+export function Header({ title, subtitle, searchValue, onSearchChange, searchPlaceholder, user }: HeaderProps) {
   return (
     <header className="sticky top-0 z-30 border-b border-white/8 bg-[rgba(10,10,12,0.9)] px-4 pb-4 pt-[calc(1.25rem+env(safe-area-inset-top,0px))] backdrop-blur-xl">
       <div className="mx-auto flex w-full max-w-[28rem] flex-col gap-4">
@@ -40,7 +41,7 @@ export function Header({ title, subtitle, searchValue, onSearchChange, user }: H
         <SearchBar
           value={searchValue}
           onChange={onSearchChange}
-          placeholder="Search meals, recipes, lifts, staples..."
+          placeholder={searchPlaceholder ?? "Search meals, recipes, lifts, staples..."}
         />
       </div>
     </header>

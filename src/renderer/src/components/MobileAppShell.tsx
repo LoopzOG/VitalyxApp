@@ -10,6 +10,7 @@ type MobileAppShellProps = {
   subtitle: string;
   searchValue: string;
   onSearchChange: (value: string) => void;
+  searchPlaceholder?: string;
   user: SessionUser;
   children: ReactNode;
 };
@@ -21,6 +22,7 @@ export function MobileAppShell({
   subtitle,
   searchValue,
   onSearchChange,
+  searchPlaceholder,
   user,
   children,
 }: MobileAppShellProps) {
@@ -32,6 +34,7 @@ export function MobileAppShell({
           subtitle={subtitle}
           searchValue={searchValue}
           onSearchChange={onSearchChange}
+          searchPlaceholder={searchPlaceholder}
           user={user}
         />
 

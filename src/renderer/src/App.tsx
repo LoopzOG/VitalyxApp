@@ -16,6 +16,7 @@ import { ExerciseDatabasePanel } from "@/components/ExerciseDatabasePanel";
 import { GroceryDashboardWidget } from "@/components/GroceryDashboardWidget";
 import { GroceryItemRow } from "@/components/GroceryItemRow";
 import { GroceryListCard } from "@/components/GroceryListCard";
+import { LiveBarcodeScanner } from "@/components/LiveBarcodeScanner";
 import { ManualPriceForm } from "@/components/ManualPriceForm";
 import { MealCard } from "@/components/MealCard";
 import { MobileAppShell } from "@/components/MobileAppShell";
@@ -305,6 +306,7 @@ function App() {
   const [barcodeValue, setBarcodeValue] = useState("");
   const [foodSearchQuery, setFoodSearchQuery] = useState("");
   const [photoLabel, setPhotoLabel] = useState("");
+  const [isNutritionScannerOpen, setIsNutritionScannerOpen] = useState(false);
   const [pendingEntries, setPendingEntries] = useState<NutritionEntry[]>([]);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [nutritionFeedback, setNutritionFeedback] = useState<string | null>(null);
@@ -1286,6 +1288,26 @@ function App() {
     }
   }
 
+  async function handleNutritionBarcodeDetected(detectedBarcode: string) {
+    setBarcodeValue(detectedBarcode);
+    const result = await nutritionService.fromBarcode(detectedBarcode);
+
+    if (!result) {
+      setNutritionFeedback("Barcode detected, but no nutrition match was found yet. Try better lighting or enter the barcode manually.");
+      throw new Error("Nutrition barcode lookup did not return a product.");
+    }
+
+    setPendingEntries([result]);
+    setNutritionFeedback("Open Food Facts nutrition found. Double-check serving before saving.");
+  }
+
+  function handleNutritionLoggingMethod(method: LoggingMethod) {
+    setLoggingMethod(method);
+    if (method === "barcode") {
+      setIsNutritionScannerOpen(true);
+    }
+  }
+
   async function handlePhotoSelected(file: File) {
     const result = await nutritionService.fromPhoto(file);
     setPhotoLabel(file.name);
@@ -1516,9 +1538,13 @@ function App() {
         <NutritionLogger
           dayLabel={day.day}
           loggingMethod={loggingMethod}
-          onLoggingMethod={setLoggingMethod}
+          onLoggingMethod={handleNutritionLoggingMethod}
           barcodeValue={barcodeValue}
           onBarcodeValue={setBarcodeValue}
+          onOpenBarcodeScanner={() => {
+            setLoggingMethod("barcode");
+            setIsNutritionScannerOpen(true);
+          }}
           searchValue={foodSearchQuery}
           onSearchValue={setFoodSearchQuery}
           photoLabel={photoLabel}
@@ -2208,6 +2234,11 @@ function App() {
 
   return (
     <>
+      <LiveBarcodeScanner
+        open={isNutritionScannerOpen}
+        onDetected={handleNutritionBarcodeDetected}
+        onClose={() => setIsNutritionScannerOpen(false)}
+      />
       <input
         ref={photoInputRef}
         type="file"

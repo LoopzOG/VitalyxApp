@@ -3,6 +3,7 @@ import {
   Camera,
   ChevronDown,
   Search,
+  ScanLine,
   Trash2,
 } from "lucide-react";
 import { SectionCard } from "@/components/SectionCard";
@@ -17,6 +18,7 @@ type NutritionLoggerProps = {
   onLoggingMethod: (method: LoggingMethod) => void;
   barcodeValue: string;
   onBarcodeValue: (value: string) => void;
+  onOpenBarcodeScanner: () => void;
   searchValue: string;
   onSearchValue: (value: string) => void;
   photoLabel: string;
@@ -60,6 +62,7 @@ export function NutritionLogger({
   onLoggingMethod,
   barcodeValue,
   onBarcodeValue,
+  onOpenBarcodeScanner,
   searchValue,
   onSearchValue,
   photoLabel,
@@ -129,6 +132,14 @@ export function NutritionLogger({
                   placeholder="012345678905"
                 />
               </label>
+              <button
+                type="button"
+                onClick={onOpenBarcodeScanner}
+                className="flex w-full items-center justify-center gap-2 rounded-[22px] border border-dashed border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-medium text-zinc-200"
+              >
+                <ScanLine size={16} />
+                Open live scanner
+              </button>
               <button
                 type="button"
                 onClick={onRunLookup}

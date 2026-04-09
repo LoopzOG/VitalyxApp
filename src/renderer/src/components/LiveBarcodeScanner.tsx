@@ -1,12 +1,21 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Camera, LoaderCircle, ScanLine, X } from "lucide-react";
-import { Html5Qrcode } from "html5-qrcode";
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
 
 type LiveBarcodeScannerProps = {
   open: boolean;
   onDetected: (barcode: string) => void | Promise<void>;
   onClose: () => void;
 };
+
+const supportedBarcodeFormats = [
+  Html5QrcodeSupportedFormats.UPC_A,
+  Html5QrcodeSupportedFormats.UPC_E,
+  Html5QrcodeSupportedFormats.EAN_13,
+  Html5QrcodeSupportedFormats.EAN_8,
+  Html5QrcodeSupportedFormats.CODE_128,
+  Html5QrcodeSupportedFormats.CODE_39,
+];
 
 export function LiveBarcodeScanner({ open, onDetected, onClose }: LiveBarcodeScannerProps) {
   const scannerId = useId().replace(/:/g, "");
@@ -23,6 +32,7 @@ export function LiveBarcodeScanner({ open, onDetected, onClose }: LiveBarcodeSca
     let cancelled = false;
     const scanner = new Html5Qrcode(scannerId, {
       useBarCodeDetectorIfSupported: true,
+      formatsToSupport: supportedBarcodeFormats,
       verbose: false,
     });
     scannerRef.current = scanner;
@@ -42,17 +52,22 @@ export function LiveBarcodeScanner({ open, onDetected, onClose }: LiveBarcodeSca
         await scanner.start(
           preferredCamera,
           {
-            fps: 8,
+            fps: 6,
             aspectRatio: 1.777778,
             qrbox: (viewfinderWidth, viewfinderHeight) => {
-              const width = Math.min(viewfinderWidth * 0.94, 380);
-              const height = Math.min(Math.max(viewfinderHeight * 0.28, 130), 190);
+              const width = Math.min(viewfinderWidth * 0.96, 420);
+              const height = Math.min(Math.max(viewfinderHeight * 0.2, 96), 140);
               return {
                 width: Math.floor(width),
                 height: Math.floor(height),
               };
             },
-            disableFlip: false,
+            disableFlip: true,
+            videoConstraints: {
+              facingMode: "environment",
+              width: { ideal: 1920 },
+              height: { ideal: 1080 },
+            },
           },
           async (decodedText) => {
             const cleaned = decodedText.replace(/[^\d]/g, "").trim();

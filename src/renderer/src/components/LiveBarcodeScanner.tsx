@@ -1,24 +1,12 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Camera, LoaderCircle, ScanLine, X } from "lucide-react";
-import { Html5Qrcode, Html5QrcodeSupportedFormats } from "html5-qrcode";
+import { Html5Qrcode } from "html5-qrcode";
 
 type LiveBarcodeScannerProps = {
   open: boolean;
   onDetected: (barcode: string) => void | Promise<void>;
   onClose: () => void;
 };
-
-const supportedFormats = [
-  Html5QrcodeSupportedFormats.UPC_A,
-  Html5QrcodeSupportedFormats.UPC_E,
-  Html5QrcodeSupportedFormats.EAN_13,
-  Html5QrcodeSupportedFormats.EAN_8,
-  Html5QrcodeSupportedFormats.UPC_EAN_EXTENSION,
-  Html5QrcodeSupportedFormats.CODE_128,
-  Html5QrcodeSupportedFormats.CODE_39,
-  Html5QrcodeSupportedFormats.CODE_93,
-  Html5QrcodeSupportedFormats.ITF,
-];
 
 export function LiveBarcodeScanner({ open, onDetected, onClose }: LiveBarcodeScannerProps) {
   const scannerId = useId().replace(/:/g, "");
@@ -34,7 +22,7 @@ export function LiveBarcodeScanner({ open, onDetected, onClose }: LiveBarcodeSca
 
     let cancelled = false;
     const scanner = new Html5Qrcode(scannerId, {
-      formatsToSupport: supportedFormats,
+      useBarCodeDetectorIfSupported: true,
       verbose: false,
     });
     scannerRef.current = scanner;
@@ -55,16 +43,16 @@ export function LiveBarcodeScanner({ open, onDetected, onClose }: LiveBarcodeSca
           preferredCamera,
           {
             fps: 8,
-            aspectRatio: 1.333334,
+            aspectRatio: 1.777778,
             qrbox: (viewfinderWidth, viewfinderHeight) => {
-              const width = Math.min(viewfinderWidth * 0.92, 360);
-              const height = Math.min(Math.max(viewfinderHeight * 0.22, 110), 170);
+              const width = Math.min(viewfinderWidth * 0.94, 380);
+              const height = Math.min(Math.max(viewfinderHeight * 0.28, 130), 190);
               return {
                 width: Math.floor(width),
                 height: Math.floor(height),
               };
             },
-            disableFlip: true,
+            disableFlip: false,
           },
           async (decodedText) => {
             const cleaned = decodedText.replace(/[^\d]/g, "").trim();

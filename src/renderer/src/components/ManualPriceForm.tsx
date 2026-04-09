@@ -4,6 +4,7 @@ import type { GroceryListItem, GroceryUnit } from "@/lib/groceryTypes";
 
 type ManualPriceFormProps = {
   item: GroceryListItem;
+  storeOptions?: string[];
   onSave: (input: {
     storeName: string;
     price: number;
@@ -13,8 +14,9 @@ type ManualPriceFormProps = {
   }) => void;
 };
 
-export function ManualPriceForm({ item, onSave }: ManualPriceFormProps) {
-  const [storeName, setStoreName] = useState(item.preferredStore ?? mockStores[0]);
+export function ManualPriceForm({ item, storeOptions, onSave }: ManualPriceFormProps) {
+  const availableStores = storeOptions?.length ? storeOptions : mockStores;
+  const [storeName, setStoreName] = useState(item.preferredStore ?? availableStores[0] ?? mockStores[0]);
   const [price, setPrice] = useState("");
   const [sizeAmount, setSizeAmount] = useState(String(item.quantity || 1));
   const [unit, setUnit] = useState<GroceryUnit>(item.unit);
@@ -33,7 +35,7 @@ export function ManualPriceForm({ item, onSave }: ManualPriceFormProps) {
           onChange={(event) => setStoreName(event.target.value)}
           className="w-full rounded-[20px] border border-white/10 bg-black/20 px-4 py-3 text-white outline-none"
         >
-          {mockStores.map((store) => (
+          {availableStores.map((store) => (
             <option key={store} value={store}>
               {store}
             </option>

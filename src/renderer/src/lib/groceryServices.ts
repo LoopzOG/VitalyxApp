@@ -70,6 +70,38 @@ function normalizeText(value: string) {
     .trim();
 }
 
+function normalizeBrand(value?: string) {
+  return normalizeText(value ?? "");
+}
+
+function compareProductMatch(item: { name?: string; brand?: string }, product: NormalizedProduct) {
+  const normalizedName = normalizeText(item.name ?? "");
+  const normalizedBrand = normalizeBrand(item.brand);
+  const normalizedProductBrand = normalizeBrand(product.brand);
+  let score = compareScore(normalizedName, product);
+
+  if (normalizedBrand && normalizedProductBrand) {
+    if (normalizedBrand === normalizedProductBrand) {
+      score += 24;
+    } else if (
+      normalizedBrand.includes(normalizedProductBrand) ||
+      normalizedProductBrand.includes(normalizedBrand)
+    ) {
+      score += 14;
+    }
+  }
+
+  if (normalizedBrand) {
+    const brandInName = normalizedName.includes(normalizedBrand);
+    const productBrandInName = normalizedProductBrand && normalizedName.includes(normalizedProductBrand);
+    if (brandInName || productBrandInName) {
+      score += 8;
+    }
+  }
+
+  return score;
+}
+
 function estimateItemTotal(item: GroceryListItem, record: PriceRecord) {
   if (item.pricingMode === "item") {
     return toCurrency(item.quantity * record.price);
@@ -137,37 +169,49 @@ export class ProductMatchingService {
     return normalizeText(name);
   }
 
-  matchItemToProduct(item: Pick<GroceryListItem, "name" | "brand" | "barcode">) {
+  matchItemToProduct(item: Pick<GroceryListItem, "name" | "brand" | "barcode" | "matchedProductId">) {
+    if (item.matchedProductId) {
+      const directMatch = groceryProducts.find((product) => product.id === item.matchedProductId);
+      if (directMatch) {
+        return directMatch;
+      }
+    }
+
     const barcode = cleanBarcode(item.barcode ?? "");
     if (barcode) {
-      const barcodeMatch = groceryProducts.find((product) => product.barcode === barcode);
+      const barcodeMatch = groceryProducts.find((product) => expandBarcodeCandidates(barcode).includes(product.barcode ?? ""));
       if (barcodeMatch) {
         return barcodeMatch;
       }
     }
 
-    const normalized = this.normalizeItemName(item.name);
     const ranked = groceryProducts
-      .map((product) => ({ product, score: compareScore(normalized, product) }))
-      .filter((entry) => entry.score > 0)
+      .map((product) => ({ product, score: compareProductMatch(item, product) }))
+      .filter((entry) => entry.score >= 70)
       .sort((a, b) => b.score - a.score);
 
     return ranked[0]?.product ?? null;
   }
 
-  getSuggestedMatches(item: Pick<GroceryListItem, "name" | "brand" | "barcode">) {
+  getSuggestedMatches(item: Pick<GroceryListItem, "name" | "brand" | "barcode" | "matchedProductId">) {
+    if (item.matchedProductId) {
+      const directMatch = groceryProducts.find((product) => product.id === item.matchedProductId);
+      if (directMatch) {
+        return [directMatch];
+      }
+    }
+
     const barcode = cleanBarcode(item.barcode ?? "");
     if (barcode) {
-      const barcodeMatch = groceryProducts.find((product) => product.barcode === barcode);
+      const barcodeMatch = groceryProducts.find((product) => expandBarcodeCandidates(barcode).includes(product.barcode ?? ""));
       if (barcodeMatch) {
         return [barcodeMatch];
       }
     }
 
-    const normalized = this.normalizeItemName(item.name);
     return groceryProducts
-      .map((product) => ({ product, score: compareScore(normalized, product) }))
-      .filter((entry) => entry.score > 0)
+      .map((product) => ({ product, score: compareProductMatch(item, product) }))
+      .filter((entry) => entry.score >= 45)
       .sort((a, b) => b.score - a.score)
       .slice(0, 3)
       .map((entry) => entry.product);
@@ -262,27 +306,36 @@ export class GroceryPriceService {
     }
 
     const matchedMockProduct = groceryProducts.find((product) => barcodeCandidates.includes(product.barcode ?? ""));
+    const matchedCatalogProduct =
+      matchedMockProduct ??
+      (offProduct
+        ? this.matchingService.matchItemToProduct({
+            name: offProduct.name,
+            brand: offProduct.brand,
+            barcode: offProduct.barcode,
+          })
+        : null);
 
     if (offProduct) {
       return {
-        barcode: matchedMockProduct?.barcode ?? barcodeCandidates[0] ?? normalizedBarcode,
+        barcode: matchedCatalogProduct?.barcode ?? barcodeCandidates[0] ?? normalizedBarcode,
         name: offProduct.name,
-        brand: undefined,
-        category: matchedMockProduct?.category ?? "Packaged grocery",
+        brand: offProduct.brand ?? matchedCatalogProduct?.brand,
+        category: matchedCatalogProduct?.category ?? offProduct.category ?? "Packaged grocery",
         suggestedUnit: "piece" as const,
-        matchedProductId: matchedMockProduct?.id,
-        sourceLabel: "Open Food Facts",
+        matchedProductId: matchedCatalogProduct?.id,
+        sourceLabel: matchedCatalogProduct ? "Open Food Facts + Vitalyx match" : "Open Food Facts",
       };
     }
 
-    if (matchedMockProduct) {
+    if (matchedCatalogProduct) {
       return {
-        barcode: normalizedBarcode,
-        name: matchedMockProduct.name,
-        brand: matchedMockProduct.brand,
-        category: matchedMockProduct.category,
+        barcode: matchedCatalogProduct.barcode ?? normalizedBarcode,
+        name: matchedCatalogProduct.name,
+        brand: matchedCatalogProduct.brand,
+        category: matchedCatalogProduct.category,
         suggestedUnit: "piece" as const,
-        matchedProductId: matchedMockProduct.id,
+        matchedProductId: matchedCatalogProduct.id,
         sourceLabel: "Vitalyx mock catalog",
       };
     }

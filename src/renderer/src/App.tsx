@@ -55,9 +55,11 @@ import {
   type ExerciseRecord,
   type ExerciseTab,
 } from "@/lib/exerciseDatabase";
+import { mockStores } from "@/lib/groceryMockData";
 import { groceryPriceService, productMatchingService, storeComparisonService } from "@/lib/groceryServices";
 import { getErrorMessage } from "@/lib/errorMessages";
 import { formatExerciseSearch, getExerciseMap, getMuscleOptions, groupExerciseResults, searchExercises } from "@/lib/exerciseSearch";
+import { fetchNearbyRetailers, type NearbyRetailersResponse } from "@/lib/instacart";
 import { formatMacro, parseMacroString, parseNumber } from "@/lib/macroEstimator";
 import { nutritionService, type NutritionEntry } from "@/lib/nutritionService";
 import { getDailyVerse, type DailyVerse } from "@/lib/dailyVerse";
@@ -309,6 +311,9 @@ function App() {
   const [editingMealId, setEditingMealId] = useState<string | null>(null);
   const [selectedGroceryItemId, setSelectedGroceryItemId] = useState<string | null>(null);
   const [showStoreComparison, setShowStoreComparison] = useState(false);
+  const [nearbyRetailerNames, setNearbyRetailerNames] = useState<string[]>([]);
+  const [retailerFeedStatus, setRetailerFeedStatus] = useState<NearbyRetailersResponse["source"]>("disabled");
+  const [retailerFeedMessage, setRetailerFeedMessage] = useState<string | null>(null);
   const [promoCodes, setPromoCodes] = useState<PromoCodeRecord[]>([]);
   const [promoCodeInput, setPromoCodeInput] = useState("");
   const [dailyVerse, setDailyVerse] = useState<DailyVerse | null>(null);
@@ -345,6 +350,30 @@ function App() {
       .finally(() => {
         if (!cancelled) {
           setDailyVerseLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void fetchNearbyRetailers()
+      .then((result) => {
+        if (!cancelled) {
+          setRetailerFeedStatus(result.source);
+          setRetailerFeedMessage(result.message ?? result.error ?? null);
+          setNearbyRetailerNames(result.retailers.map((retailer) => retailer.name));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setRetailerFeedStatus("disabled");
+          setRetailerFeedMessage("Retailer feed is unavailable right now, so Vitalyx is using built-in store options.");
+          setNearbyRetailerNames([]);
         }
       });
 
@@ -509,6 +538,7 @@ function App() {
   const todayMeals = normalizedPlanner[todayIndex]?.meals ?? [];
   const totals = mealTotals(todayMeals);
   const activeGroceryList = groceryLists[0] ?? createInitialGroceryLists()[0];
+  const availableRetailerNames = nearbyRetailerNames.length ? nearbyRetailerNames : mockStores;
   const pricedGroceryList = {
     ...activeGroceryList,
     items: groceryPriceService.getPricesForList(activeGroceryList.items, manualPriceRecords),
@@ -1342,12 +1372,15 @@ function App() {
     unit: GroceryUnit;
     barcode?: string;
     brand?: string;
+    category?: string;
+    matchedProductId?: string;
     preferredStore?: string;
   }) {
     const matchedProduct = productMatchingService.matchItemToProduct({
       name: input.name,
       brand: input.brand,
       barcode: input.barcode,
+      matchedProductId: input.matchedProductId,
     });
     const now = new Date().toISOString();
     const nextItem: GroceryListItem = {
@@ -1360,8 +1393,8 @@ function App() {
       pricingMode: input.barcode ? "item" : "unit",
       brand: input.brand,
       preferredStore: input.preferredStore,
-      category: matchedProduct?.category,
-      matchedProductId: matchedProduct?.id,
+      category: input.category ?? matchedProduct?.category,
+      matchedProductId: input.matchedProductId ?? matchedProduct?.id,
       latestPrices: [],
     };
 
@@ -1807,12 +1840,19 @@ function App() {
       <div className="space-y-5">
         <SectionCard eyebrow="Dashboard widget" title="Grocery price tracking">
           {isPremiumSubscriber ? (
-            <GroceryDashboardWidget
-              weeklyEstimate={weeklyEstimate}
-              cheapestStore={cheapestStoreResult?.storeName ?? "No match yet"}
-              cheapestTotal={cheapestStoreResult?.totalCost ?? 0}
-              stapleChanges={stapleChanges.length ? stapleChanges : [{ item: "Staples", change: "awaiting list data" }]}
-            />
+            <div className="space-y-3">
+              <GroceryDashboardWidget
+                weeklyEstimate={weeklyEstimate}
+                cheapestStore={cheapestStoreResult?.storeName ?? "No match yet"}
+                cheapestTotal={cheapestStoreResult?.totalCost ?? 0}
+                stapleChanges={stapleChanges.length ? stapleChanges : [{ item: "Staples", change: "awaiting list data" }]}
+              />
+              <div className="rounded-[20px] border border-white/8 bg-white/[0.03] p-3 text-xs leading-6 text-zinc-400">
+                {retailerFeedStatus === "instacart"
+                  ? `Retailer matching is using nearby Instacart-supported stores${availableRetailerNames.length ? `: ${availableRetailerNames.slice(0, 4).join(", ")}` : ""}.`
+                  : retailerFeedMessage ?? "Retailer feed is not configured yet, so grocery matching is currently using built-in store options and manual price updates."}
+              </div>
+            </div>
           ) : (
             <div className="rounded-[24px] border border-emerald-300/15 bg-emerald-400/8 p-4 text-sm leading-7 text-zinc-200">
               Free users can build a grocery list, add items by manual barcode entry, and save their own store prices. Premium unlocks full store comparison and best-cart estimates.
@@ -1837,6 +1877,7 @@ function App() {
             onBarcodeLookup={(barcode) => groceryPriceService.lookupBarcode(barcode)}
             isPremiumSubscriber={isPremiumSubscriber}
             onUpgradeToPremium={handleUpgradeToPremium}
+            storeOptions={availableRetailerNames}
           />
 
           {filteredGroceryItems.length ? (
@@ -2011,7 +2052,11 @@ function App() {
                 records={selectedItemHistory}
               />
 
-              <ManualPriceForm item={selectedGroceryItem} onSave={(input) => saveManualPriceUpdate(selectedGroceryItem, input)} />
+              <ManualPriceForm
+                item={selectedGroceryItem}
+                storeOptions={availableRetailerNames}
+                onSave={(input) => saveManualPriceUpdate(selectedGroceryItem, input)}
+              />
             </div>
           </SectionCard>
         ) : null}
@@ -2024,10 +2069,15 @@ function App() {
                   <p className="text-sm font-medium text-white">
                     {user?.subscriptionTier === "premium" ? "Premium active" : "Free plan"}
                   </p>
-                  <p className="mt-1 text-sm text-zinc-400">
-                    Premium unlocks UPC camera scanning through Stripe billing at $9.99 monthly or $59.99 yearly.
-                  </p>
-                </div>
+              <p className="mt-1 text-sm text-zinc-400">
+                Premium unlocks UPC camera scanning through Stripe billing at $9.99 monthly or $59.99 yearly.
+              </p>
+              <p className="mt-2 text-xs text-zinc-500">
+                {retailerFeedStatus === "instacart"
+                  ? "Nearby retailer discovery is connected."
+                  : "Live retailer discovery can be enabled later with Instacart server credentials."}
+              </p>
+            </div>
                 {user?.subscriptionTier === "premium" ? (
                   <span className="rounded-full bg-emerald-400/15 px-3 py-1 text-xs font-medium uppercase tracking-[0.2em] text-emerald-300">
                     Premium

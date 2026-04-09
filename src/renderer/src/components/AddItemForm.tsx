@@ -11,6 +11,8 @@ type AddItemFormProps = {
     unit: GroceryUnit;
     barcode?: string;
     brand?: string;
+    category?: string;
+    matchedProductId?: string;
     preferredStore?: string;
   }) => void | Promise<void>;
   onBarcodeLookup: (barcode: string) => Promise<{
@@ -18,16 +20,19 @@ type AddItemFormProps = {
     barcode: string;
     brand?: string;
     category?: string;
+    matchedProductId?: string;
     suggestedUnit: GroceryUnit;
     sourceLabel: string;
   } | null>;
   isPremiumSubscriber: boolean;
   onUpgradeToPremium: () => void;
+  storeOptions?: string[];
 };
 
 const units: GroceryUnit[] = ["lb", "dozen", "bag", "tub", "head", "piece", "cup", "oz", "serving"];
 
-export function AddItemForm({ onAdd, onBarcodeLookup, isPremiumSubscriber, onUpgradeToPremium }: AddItemFormProps) {
+export function AddItemForm({ onAdd, onBarcodeLookup, isPremiumSubscriber, onUpgradeToPremium, storeOptions }: AddItemFormProps) {
+  const availableStores = storeOptions?.length ? storeOptions : mockStores;
   const [entryMode, setEntryMode] = useState<"name" | "barcode">("name");
   const [name, setName] = useState("");
   const [quantity, setQuantity] = useState("1");
@@ -35,6 +40,8 @@ export function AddItemForm({ onAdd, onBarcodeLookup, isPremiumSubscriber, onUpg
   const [brand, setBrand] = useState("");
   const [preferredStore, setPreferredStore] = useState("");
   const [barcode, setBarcode] = useState("");
+  const [matchedProductId, setMatchedProductId] = useState<string | undefined>(undefined);
+  const [detectedCategory, setDetectedCategory] = useState<string | undefined>(undefined);
   const [barcodeFeedback, setBarcodeFeedback] = useState<string | null>(null);
   const [isLookingUpBarcode, setIsLookingUpBarcode] = useState(false);
   const [isScanningBarcode, setIsScanningBarcode] = useState(false);
@@ -60,6 +67,8 @@ export function AddItemForm({ onAdd, onBarcodeLookup, isPremiumSubscriber, onUpg
     setBrand(result.brand ?? "");
     setUnit(result.suggestedUnit);
     setBarcode(result.barcode);
+    setMatchedProductId(result.matchedProductId);
+    setDetectedCategory(result.category);
     setBarcodeFeedback(`Matched from ${result.sourceLabel}. Review quantity and store before saving.`);
   }
 
@@ -79,6 +88,8 @@ export function AddItemForm({ onAdd, onBarcodeLookup, isPremiumSubscriber, onUpg
       setBrand(result.brand ?? "");
       setUnit(result.suggestedUnit);
       setBarcode(result.barcode);
+      setMatchedProductId(result.matchedProductId);
+      setDetectedCategory(result.category);
       setBarcodeFeedback(`Matched from ${result.sourceLabel}. Review quantity and store before saving.`);
     } finally {
       setIsScanningBarcode(false);
@@ -135,7 +146,10 @@ export function AddItemForm({ onAdd, onBarcodeLookup, isPremiumSubscriber, onUpg
                 <Barcode size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500" />
                 <input
                   value={barcode}
-                  onChange={(event) => setBarcode(event.target.value)}
+                  onChange={(event) => {
+                    setBarcode(event.target.value);
+                    setMatchedProductId(undefined);
+                  }}
                   inputMode="numeric"
                   placeholder="Enter barcode"
                   className="w-full rounded-[20px] border border-white/10 bg-black/20 py-3 pl-11 pr-4 text-white outline-none"
@@ -189,7 +203,10 @@ export function AddItemForm({ onAdd, onBarcodeLookup, isPremiumSubscriber, onUpg
 
         <input
           value={name}
-          onChange={(event) => setName(event.target.value)}
+          onChange={(event) => {
+            setName(event.target.value);
+            setMatchedProductId(undefined);
+          }}
           placeholder={entryMode === "barcode" ? "Product name" : "Chicken breast"}
           className="w-full rounded-[20px] border border-white/10 bg-black/20 px-4 py-3 text-white outline-none"
         />
@@ -216,7 +233,10 @@ export function AddItemForm({ onAdd, onBarcodeLookup, isPremiumSubscriber, onUpg
 
         <input
           value={brand}
-          onChange={(event) => setBrand(event.target.value)}
+          onChange={(event) => {
+            setBrand(event.target.value);
+            setMatchedProductId(undefined);
+          }}
           placeholder="Optional brand"
           className="w-full rounded-[20px] border border-white/10 bg-black/20 px-4 py-3 text-white outline-none"
         />
@@ -227,7 +247,7 @@ export function AddItemForm({ onAdd, onBarcodeLookup, isPremiumSubscriber, onUpg
           className="w-full rounded-[20px] border border-white/10 bg-black/20 px-4 py-3 text-white outline-none"
         >
           <option value="">Any store</option>
-          {mockStores.map((store) => (
+          {availableStores.map((store) => (
             <option key={store} value={store}>
               {store}
             </option>
@@ -244,6 +264,8 @@ export function AddItemForm({ onAdd, onBarcodeLookup, isPremiumSubscriber, onUpg
               unit,
               barcode: barcode.replace(/[^\d]/g, "") || undefined,
               brand: brand.trim() || undefined,
+              category: detectedCategory,
+              matchedProductId,
               preferredStore: preferredStore || undefined,
             });
             setName("");
@@ -252,6 +274,8 @@ export function AddItemForm({ onAdd, onBarcodeLookup, isPremiumSubscriber, onUpg
             setBrand("");
             setPreferredStore("");
             setBarcode("");
+            setMatchedProductId(undefined);
+            setDetectedCategory(undefined);
             setBarcodeFeedback(null);
             setEntryMode("name");
           }}

@@ -40,7 +40,7 @@ Recommended production settings:
 
 Suggested redirect URLs:
 
-- `http://127.0.0.1:5173/`
+- `http://localhost:5173/`
 - `https://www.vitalyxapp.com/`
 - `https://vitalyxapp.com/`
 
@@ -63,3 +63,21 @@ where email = 'you@example.com';
 - Never ship the service-role key to the client
 - Make sure your live domain is added in Supabase Auth redirect settings
 - Build with `npm run web:build`
+
+## 6. Optional Instacart retailer feed
+
+The grocery UI now supports server-side retailer discovery without changing the existing screen layout.
+
+Add these server environment variables locally and in Vercel if you want nearby Instacart-supported retailer names to load:
+
+```bash
+INSTACART_API_KEY=your-instacart-server-api-key
+INSTACART_DEFAULT_POSTAL_CODE=30301
+INSTACART_DEFAULT_COUNTRY_CODE=US
+```
+
+Notes:
+
+- These values are server-only and should not be exposed with a `VITE_` prefix.
+- If they are missing, Vitalyx falls back to the built-in store list and manual price entry.
+- This step prepares the live retailer layer without changing the current grocery UI.

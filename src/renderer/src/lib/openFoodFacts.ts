@@ -1,6 +1,9 @@
 export type OpenFoodFactsNutritionEntry = {
   name: string;
   barcode: string;
+  brand?: string;
+  category?: string;
+  quantityLabel?: string;
   servingSize?: string;
   calories?: number;
   carbs?: number;
@@ -13,6 +16,9 @@ type OpenFoodFactsProductResponse = {
   code?: string;
   product?: {
     product_name?: string;
+    brands?: string;
+    categories?: string;
+    quantity?: string;
     serving_size?: string;
     nutriments?: {
       "energy-kcal_100g"?: number;
@@ -32,7 +38,7 @@ type OpenFoodFactsProductResponse = {
 type OpenFoodFactsNutriments = NonNullable<NonNullable<OpenFoodFactsProductResponse["product"]>["nutriments"]>;
 
 const OPEN_FOOD_FACTS_BASE_URL = "https://world.openfoodfacts.net/api/v2/product";
-const OPEN_FOOD_FACTS_FIELDS = "code,product_name,serving_size,nutriments";
+const OPEN_FOOD_FACTS_FIELDS = "code,product_name,brands,categories,quantity,serving_size,nutriments";
 
 function toOptionalNumber(value: unknown) {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
@@ -84,6 +90,9 @@ export function mapOpenFoodFactsProductToNutritionEntry(
   return {
     name,
     barcode,
+    brand: product.brands?.split(",")[0]?.trim() || undefined,
+    category: product.categories?.split(",")[0]?.trim() || undefined,
+    quantityLabel: product.quantity?.trim() || undefined,
     servingSize: product.serving_size?.trim() || undefined,
     calories: pickNutrient(nutriments, "energy-kcal_serving", "energy-kcal_100g"),
     carbs: pickNutrient(nutriments, "carbohydrates_serving", "carbohydrates_100g"),

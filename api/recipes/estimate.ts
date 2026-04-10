@@ -34,8 +34,45 @@ type RecipeEstimateResponse = {
   totalIngredients?: number;
 };
 
+type ParsedRecipeContent = {
+  title: string;
+  servings?: number;
+  ingredients: string[];
+  nutrition?: {
+    calories?: number;
+    fat?: number;
+    carbs?: number;
+    protein?: number;
+  };
+};
+
 function cleanText(value: string) {
   return value.replace(/\s+/g, " ").trim();
+}
+
+function decodeHtmlEntities(value: string) {
+  return value
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&quot;/gi, "\"")
+    .replace(/&#39;/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">");
+}
+
+function htmlToText(html: string) {
+  return decodeHtmlEntities(
+    html
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<\/(p|div|section|article|li|ul|ol|h1|h2|h3|h4|h5|h6|br)>/gi, "\n")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\r/g, "\n"),
+  )
+    .split("\n")
+    .map((line) => cleanText(line))
+    .filter(Boolean)
+    .join("\n");
 }
 
 function toOptionalNumber(value: unknown) {
@@ -135,8 +172,15 @@ function parseIngredient(ingredient: string) {
       .replace(/\bof\b/g, " "),
   );
 
-  const match = cleaned.match(
-    /^(?<amount>\d+(?:\.\d+)?|\d+\/\d+)?\s*(?<unit>g|gram|grams|oz|ounce|ounces|cup|cups|tbsp|tablespoon|tablespoons|piece|pieces)?\s*(?<food>.+)$/i,
+  const compacted = cleaned
+    .replace(/^(\d+)\s+(\d+)\/(\d+)\b/, (_, whole, numerator, denominator) =>
+      `${Number(whole) + Number(numerator) / Number(denominator)}`,
+    )
+    .replace(/\bpackage\b/g, "package")
+    .replace(/\bpounds?\b/g, "oz");
+
+  const match = compacted.match(
+    /^(?<amount>\d+(?:\.\d+)?|\d+\/\d+)?\s*(?<unit>g|gram|grams|oz|ounce|ounces|cup|cups|tbsp|tablespoon|tablespoons|piece|pieces|package)?\s*(?<food>.+)$/i,
   );
 
   if (!match?.groups?.food) {
@@ -155,6 +199,75 @@ function parseIngredient(ingredient: string) {
     amount,
     unit: normalizeUnit(match.groups.unit),
     foodName: cleanText(match.groups.food),
+  };
+}
+
+function extractBetween(text: string, startMarker: string, endMarker: string) {
+  const startIndex = text.indexOf(startMarker);
+  if (startIndex < 0) {
+    return "";
+  }
+
+  const fromStart = text.slice(startIndex + startMarker.length);
+  const endIndex = fromStart.indexOf(endMarker);
+  return endIndex >= 0 ? fromStart.slice(0, endIndex) : fromStart;
+}
+
+function parseHtmlFallback(html: string, url: URL): ParsedRecipeContent | null {
+  const text = htmlToText(html);
+  if (!text) {
+    return null;
+  }
+
+  const titleMatch =
+    text.match(/#?\s*([^\n]+?)\n(?:\d+(?:\.\d+)?\n)?(?:\(\d+\)\n)?\d+\s+Reviews/i) ??
+    text.match(/([^\n]+)\nPrep Time:/i);
+  const title = cleanText(titleMatch?.[1] ?? url.hostname.replace(/^www\./, ""));
+
+  const servingsMatch =
+    text.match(/Servings:\s*(\d+(?:\.\d+)?)/i) ??
+    text.match(/Servings Per Recipe\s*(\d+(?:\.\d+)?)/i) ??
+    text.match(/yields\s*(\d+(?:\.\d+)?)\s*servings?/i);
+  const servings = servingsMatch ? Number.parseFloat(servingsMatch[1]) : undefined;
+
+  const ingredientsBlock = extractBetween(text, "Ingredients", "Directions");
+  const ingredients = ingredientsBlock
+    .split("\n")
+    .map((line) => cleanText(line.replace(/^[*•-]\s*/, "")))
+    .filter((line) => {
+      if (!line) {
+        return false;
+      }
+
+      if (/^(1\/2x|1x|2x|oops!|this recipe was developed)/i.test(line)) {
+        return false;
+      }
+
+      return /^\d/.test(line);
+    });
+
+  const nutritionFactsMatch = text.match(
+    /Nutrition Facts \(per serving\)\s*(\d+(?:\.\d+)?)\s*Calories\s*(\d+(?:\.\d+)?)g\s*Fat\s*(\d+(?:\.\d+)?)g\s*Carbs\s*(\d+(?:\.\d+)?)g\s*Protein/i,
+  );
+
+  const nutrition = nutritionFactsMatch
+    ? {
+        calories: Number.parseFloat(nutritionFactsMatch[1]),
+        fat: Number.parseFloat(nutritionFactsMatch[2]),
+        carbs: Number.parseFloat(nutritionFactsMatch[3]),
+        protein: Number.parseFloat(nutritionFactsMatch[4]),
+      }
+    : undefined;
+
+  if (!title && !ingredients.length && !nutrition) {
+    return null;
+  }
+
+  return {
+    title: title || url.hostname.replace(/^www\./, ""),
+    servings,
+    ingredients,
+    nutrition,
   };
 }
 
@@ -284,6 +397,77 @@ function estimateFromIngredients(recipe: Record<string, unknown>) {
   };
 }
 
+function estimateFromParsedIngredients(parsedRecipe: ParsedRecipeContent) {
+  const ingredients = parsedRecipe.ingredients;
+  const servings = parsedRecipe.servings && parsedRecipe.servings > 0 ? parsedRecipe.servings : 1;
+  const totals: MacroTotals = {
+    calories: 0,
+    protein: 0,
+    carbs: 0,
+    fat: 0,
+  };
+
+  let matchedIngredients = 0;
+
+  for (const ingredient of ingredients) {
+    const parsed = parseIngredient(ingredient);
+    if (!parsed) {
+      continue;
+    }
+
+    const food = findFood(parsed.foodName);
+    if (!food) {
+      continue;
+    }
+
+    const ratio = convertRatio(parsed.amount, parsed.unit, food);
+    if (!ratio) {
+      continue;
+    }
+
+    matchedIngredients += 1;
+    totals.calories += food.macrosPerDefault.calories * ratio;
+    totals.protein += food.macrosPerDefault.protein * ratio;
+    totals.carbs += food.macrosPerDefault.carbs * ratio;
+    totals.fat += food.macrosPerDefault.fat * ratio;
+  }
+
+  if (!matchedIngredients) {
+    return null;
+  }
+
+  return {
+    servingAmount: 1,
+    servingUnit: "serving" as const,
+    calories: roundCalories(totals.calories / servings),
+    protein: roundMacro(totals.protein / servings),
+    carbs: roundMacro(totals.carbs / servings),
+    fat: roundMacro(totals.fat / servings),
+    confidenceScore: Math.max(0.42, Math.min(0.8, matchedIngredients / Math.max(ingredients.length, 1))),
+    estimatedFrom: "ingredients" as const,
+    matchedIngredients,
+    totalIngredients: ingredients.length,
+  };
+}
+
+function estimateFromParsedNutrition(parsedRecipe: ParsedRecipeContent) {
+  const nutrition = parsedRecipe.nutrition;
+  if (!nutrition) {
+    return null;
+  }
+
+  return {
+    servingAmount: 1,
+    servingUnit: "serving" as const,
+    calories: roundCalories(nutrition.calories ?? 0),
+    protein: roundMacro(nutrition.protein ?? 0),
+    carbs: roundMacro(nutrition.carbs ?? 0),
+    fat: roundMacro(nutrition.fat ?? 0),
+    confidenceScore: 0.92,
+    estimatedFrom: "schema-nutrition" as const,
+  };
+}
+
 function estimateFromSchemaNutrition(recipe: Record<string, unknown>) {
   const nutrition = recipe.nutrition;
   if (!nutrition || typeof nutrition !== "object") {
@@ -350,13 +534,21 @@ export default async function handler(req: RequestLike, res: ResponseLike) {
 
     const html = await response.text();
     const recipe = findRecipeSchema(html);
-    if (!recipe) {
-      return res.status(404).json({ error: "No recipe schema was found on that page." });
+    const parsedRecipe = recipe ? null : parseHtmlFallback(html, parsedUrl);
+
+    if (!recipe && !parsedRecipe) {
+      return res.status(404).json({ error: "No recipe data was found on that page." });
     }
 
-    const title = getRecipeTitle(recipe, html, parsedUrl);
-    const schemaEstimate = estimateFromSchemaNutrition(recipe);
-    const ingredientEstimate = estimateFromIngredients(recipe);
+    const title = recipe
+      ? getRecipeTitle(recipe, html, parsedUrl)
+      : parsedRecipe?.title ?? parsedUrl.hostname.replace(/^www\./, "");
+    const schemaEstimate = recipe
+      ? estimateFromSchemaNutrition(recipe)
+      : estimateFromParsedNutrition(parsedRecipe!);
+    const ingredientEstimate = recipe
+      ? estimateFromIngredients(recipe)
+      : estimateFromParsedIngredients(parsedRecipe!);
     const estimate = schemaEstimate ?? ingredientEstimate;
 
     if (!estimate) {

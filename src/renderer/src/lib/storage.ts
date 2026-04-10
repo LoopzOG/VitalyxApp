@@ -152,7 +152,11 @@ function safeRead<T>(key: string, fallback: T): T {
 }
 
 function safeWrite<T>(key: string, value: T) {
-  localStorage.setItem(key, JSON.stringify(value));
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Some mobile/private browsers reject storage writes; the app should keep running.
+  }
 }
 
 function appendAccountAuditRecord(record: Omit<AccountAuditRecord, "id" | "createdAt">) {

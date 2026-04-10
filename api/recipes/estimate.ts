@@ -1,5 +1,3 @@
-import { foodCatalog, type FoodCatalogItem, type PortionUnit } from "../../src/renderer/src/data";
-
 type RequestLike = {
   method?: string;
   query: Record<string, string | string[] | undefined>;
@@ -12,45 +10,50 @@ type ResponseLike = {
   };
 };
 
-type MacroTotals = {
-  calories: number;
-  protein: number;
-  carbs: number;
-  fat: number;
-};
+type PortionUnit = "g" | "oz" | "serving" | "cup" | "tbsp" | "piece";
 
-type RecipeEstimateResponse = {
-  title: string;
-  sourceUrl: string;
-  servingAmount: number;
-  servingUnit: "serving";
-  calories: number;
-  protein: number;
-  carbs: number;
-  fat: number;
-  confidenceScore: number;
-  estimatedFrom: "schema-nutrition" | "ingredients";
-  matchedIngredients?: number;
-  totalIngredients?: number;
-};
-
-type ParsedRecipeContent = {
-  title: string;
-  servings?: number;
-  ingredients: string[];
-  nutrition?: {
-    calories?: number;
-    fat?: number;
-    carbs?: number;
-    protein?: number;
+type FoodCatalogItem = {
+  name: string;
+  aliases: string[];
+  defaultAmount: number;
+  unit: PortionUnit;
+  macrosPerDefault: {
+    calories: number;
+    protein: number;
+    carbs: number;
+    fat: number;
   };
 };
+
+const foodCatalog: FoodCatalogItem[] = [
+  { name: "Chicken breast", aliases: ["chicken", "grilled chicken", "chicken breast"], defaultAmount: 4, unit: "oz", macrosPerDefault: { calories: 187, protein: 35, carbs: 0, fat: 4 } },
+  { name: "Ground turkey", aliases: ["turkey", "ground turkey"], defaultAmount: 4, unit: "oz", macrosPerDefault: { calories: 170, protein: 22, carbs: 0, fat: 9 } },
+  { name: "Salmon", aliases: ["salmon", "atlantic salmon"], defaultAmount: 4, unit: "oz", macrosPerDefault: { calories: 233, protein: 25, carbs: 0, fat: 14 } },
+  { name: "White rice", aliases: ["rice", "white rice", "jasmine rice"], defaultAmount: 1, unit: "cup", macrosPerDefault: { calories: 205, protein: 4, carbs: 45, fat: 0.4 } },
+  { name: "Brown rice", aliases: ["brown rice"], defaultAmount: 1, unit: "cup", macrosPerDefault: { calories: 216, protein: 5, carbs: 45, fat: 1.8 } },
+  { name: "Oats", aliases: ["oats", "rolled oats", "oatmeal"], defaultAmount: 40, unit: "g", macrosPerDefault: { calories: 154, protein: 5, carbs: 27, fat: 3 } },
+  { name: "Greek yogurt", aliases: ["greek yogurt", "yogurt"], defaultAmount: 170, unit: "g", macrosPerDefault: { calories: 100, protein: 17, carbs: 6, fat: 0 } },
+  { name: "Whole egg", aliases: ["egg", "whole egg", "eggs"], defaultAmount: 1, unit: "piece", macrosPerDefault: { calories: 72, protein: 6, carbs: 0.4, fat: 5 } },
+  { name: "Egg whites", aliases: ["egg whites", "egg white"], defaultAmount: 100, unit: "g", macrosPerDefault: { calories: 52, protein: 11, carbs: 0.7, fat: 0.2 } },
+  { name: "Whey protein", aliases: ["whey", "whey protein", "protein powder"], defaultAmount: 1, unit: "serving", macrosPerDefault: { calories: 120, protein: 24, carbs: 3, fat: 1.5 } },
+  { name: "Peanut butter", aliases: ["peanut butter"], defaultAmount: 1, unit: "tbsp", macrosPerDefault: { calories: 95, protein: 4, carbs: 3.5, fat: 8 } },
+  { name: "Avocado", aliases: ["avocado"], defaultAmount: 100, unit: "g", macrosPerDefault: { calories: 160, protein: 2, carbs: 9, fat: 15 } },
+  { name: "Banana", aliases: ["banana"], defaultAmount: 1, unit: "piece", macrosPerDefault: { calories: 105, protein: 1.3, carbs: 27, fat: 0.3 } },
+  { name: "Sweet potato", aliases: ["sweet potato"], defaultAmount: 100, unit: "g", macrosPerDefault: { calories: 86, protein: 1.6, carbs: 20, fat: 0.1 } },
+  { name: "Broccoli", aliases: ["broccoli"], defaultAmount: 100, unit: "g", macrosPerDefault: { calories: 35, protein: 2.4, carbs: 7, fat: 0.4 } },
+  { name: "Pasta", aliases: ["pasta", "penne", "rotini", "spaghetti", "macaroni"], defaultAmount: 2, unit: "oz", macrosPerDefault: { calories: 200, protein: 7, carbs: 42, fat: 1.5 } },
+  { name: "Mozzarella", aliases: ["mozzarella", "cheese", "parmesan"], defaultAmount: 1, unit: "oz", macrosPerDefault: { calories: 85, protein: 6, carbs: 1, fat: 6 } },
+  { name: "Milk", aliases: ["milk"], defaultAmount: 1, unit: "cup", macrosPerDefault: { calories: 103, protein: 8, carbs: 12, fat: 2.4 } },
+  { name: "Butter", aliases: ["butter"], defaultAmount: 1, unit: "tbsp", macrosPerDefault: { calories: 102, protein: 0.1, carbs: 0, fat: 11.5 } },
+  { name: "Olive oil", aliases: ["olive oil", "oil"], defaultAmount: 1, unit: "tbsp", macrosPerDefault: { calories: 119, protein: 0, carbs: 0, fat: 13.5 } },
+  { name: "Flour", aliases: ["flour", "all-purpose flour"], defaultAmount: 0.25, unit: "cup", macrosPerDefault: { calories: 114, protein: 3, carbs: 24, fat: 0.3 } },
+];
 
 function cleanText(value: string) {
   return value.replace(/\s+/g, " ").trim();
 }
 
-function decodeHtmlEntities(value: string) {
+function decodeHtml(value: string) {
   return value
     .replace(/&nbsp;/gi, " ")
     .replace(/&amp;/gi, "&")
@@ -61,13 +64,12 @@ function decodeHtmlEntities(value: string) {
 }
 
 function htmlToText(html: string) {
-  return decodeHtmlEntities(
+  return decodeHtml(
     html
       .replace(/<script[\s\S]*?<\/script>/gi, " ")
       .replace(/<style[\s\S]*?<\/style>/gi, " ")
-      .replace(/<\/(p|div|section|article|li|ul|ol|h1|h2|h3|h4|h5|h6|br)>/gi, "\n")
-      .replace(/<[^>]+>/g, " ")
-      .replace(/\r/g, "\n"),
+      .replace(/<\/(p|div|section|article|li|ul|ol|h1|h2|h3|h4|h5|h6|br|span)>/gi, "\n")
+      .replace(/<[^>]+>/g, " "),
   )
     .split("\n")
     .map((line) => cleanText(line))
@@ -75,53 +77,41 @@ function htmlToText(html: string) {
     .join("\n");
 }
 
-function toOptionalNumber(value: unknown) {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value;
-  }
-
-  if (typeof value === "string") {
-    const parsed = Number.parseFloat(value.replace(/[^\d.]/g, ""));
-    return Number.isFinite(parsed) ? parsed : undefined;
-  }
-
-  return undefined;
-}
-
-function normalizeUnit(rawUnit?: string): PortionUnit {
-  const normalized = (rawUnit ?? "serving").toLowerCase();
-  if (normalized === "cups") return "cup";
-  if (normalized === "pieces") return "piece";
-  if (normalized === "servings") return "serving";
-  if (normalized === "tablespoon" || normalized === "tablespoons" || normalized === "tbsp.") return "tbsp";
-  if (normalized === "ounce" || normalized === "ounces") return "oz";
-  return ["g", "oz", "serving", "cup", "tbsp", "piece"].includes(normalized)
-    ? (normalized as PortionUnit)
-    : "serving";
-}
-
-function parseYield(value: unknown) {
-  if (typeof value === "number" && Number.isFinite(value) && value > 0) {
-    return value;
-  }
-
-  if (typeof value === "string") {
-    const match = value.match(/(\d+(?:\.\d+)?)/);
-    if (match) {
-      const parsed = Number.parseFloat(match[1]);
-      return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
-    }
-  }
-
-  return 1;
+function roundCalories(value: number) {
+  return Math.round(value);
 }
 
 function roundMacro(value: number) {
   return Math.round(value * 10) / 10;
 }
 
-function roundCalories(value: number) {
-  return Math.round(value);
+function normalizeUnit(rawUnit?: string): PortionUnit {
+  const normalized = (rawUnit ?? "serving").toLowerCase();
+  if (normalized === "grams" || normalized === "gram") return "g";
+  if (normalized === "ounces" || normalized === "ounce" || normalized === "lb" || normalized === "lbs") return "oz";
+  if (normalized === "cups") return "cup";
+  if (normalized === "tablespoon" || normalized === "tablespoons") return "tbsp";
+  if (normalized === "pieces") return "piece";
+  if (normalized === "servings") return "serving";
+  return ["g", "oz", "serving", "cup", "tbsp", "piece"].includes(normalized) ? (normalized as PortionUnit) : "serving";
+}
+
+function findFood(value: string) {
+  const normalized = cleanText(value.toLowerCase());
+  if (!normalized) {
+    return null;
+  }
+
+  return (
+    foodCatalog.find((food) => food.name.toLowerCase() === normalized || food.aliases.some((alias) => alias.toLowerCase() === normalized)) ??
+    foodCatalog.find(
+      (food) =>
+        food.name.toLowerCase().includes(normalized) ||
+        normalized.includes(food.name.toLowerCase()) ||
+        food.aliases.some((alias) => alias.toLowerCase().includes(normalized) || normalized.includes(alias.toLowerCase())),
+    ) ??
+    null
+  );
 }
 
 function convertRatio(amount: number, unit: PortionUnit, food: FoodCatalogItem) {
@@ -135,52 +125,111 @@ function convertRatio(amount: number, unit: PortionUnit, food: FoodCatalogItem) 
     return amount / 28.35 / food.defaultAmount;
   }
   if (unit === "oz" && food.unit === "g") {
-    return amount * 28.35 / food.defaultAmount;
+    return (amount * 28.35) / food.defaultAmount;
   }
   return null;
 }
 
-function findFood(query: string) {
-  const normalized = query.trim().toLowerCase();
-  if (!normalized) {
+function extractJsonLd(html: string) {
+  const matches = html.match(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi) ?? [];
+  for (const match of matches) {
+    const content = match.replace(/^.*?>/, "").replace(/<\/script>$/i, "").trim();
+    try {
+      const parsed = JSON.parse(content) as unknown;
+      const items = Array.isArray(parsed) ? parsed : [parsed];
+      for (const item of items) {
+        if (item && typeof item === "object") {
+          const record = item as Record<string, unknown>;
+          const type = record["@type"];
+          if (type === "Recipe" || (Array.isArray(type) && type.includes("Recipe"))) {
+            return record;
+          }
+          const graph = record["@graph"];
+          if (Array.isArray(graph)) {
+            for (const graphItem of graph) {
+              if (graphItem && typeof graphItem === "object") {
+                const graphRecord = graphItem as Record<string, unknown>;
+                const graphType = graphRecord["@type"];
+                if (graphType === "Recipe" || (Array.isArray(graphType) && graphType.includes("Recipe"))) {
+                  return graphRecord;
+                }
+              }
+            }
+          }
+        }
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
+}
+
+function parseNutritionFromText(text: string) {
+  const match = text.match(
+    /Nutrition Facts(?:\s*\(per serving\))?\s*(\d+(?:\.\d+)?)\s*Calories\s*(\d+(?:\.\d+)?)g\s*Fat\s*(\d+(?:\.\d+)?)g\s*Carbs\s*(\d+(?:\.\d+)?)g\s*Protein/i,
+  );
+
+  if (!match) {
     return null;
   }
 
-  return (
-    foodCatalog.find(
-      (food) =>
-        food.name.toLowerCase() === normalized || food.aliases.some((alias) => alias.toLowerCase() === normalized),
-    ) ??
-    foodCatalog.find(
-      (food) =>
-        food.name.toLowerCase().includes(normalized) ||
-        normalized.includes(food.name.toLowerCase()) ||
-        food.aliases.some(
-          (alias) => alias.toLowerCase().includes(normalized) || normalized.includes(alias.toLowerCase()),
-        ),
-    ) ??
-    null
-  );
+  return {
+    calories: Number.parseFloat(match[1]),
+    fat: Number.parseFloat(match[2]),
+    carbs: Number.parseFloat(match[3]),
+    protein: Number.parseFloat(match[4]),
+  };
 }
 
-function parseIngredient(ingredient: string) {
-  const cleaned = cleanText(
-    ingredient
+function parseServings(text: string) {
+  const match =
+    text.match(/Servings:\s*(\d+(?:\.\d+)?)/i) ??
+    text.match(/Servings Per Recipe\s*(\d+(?:\.\d+)?)/i) ??
+    text.match(/recipeYield["':\s\[]+(\d+(?:\.\d+)?)/i) ??
+    text.match(/yields?\s*(\d+(?:\.\d+)?)\s*servings?/i);
+  return match ? Number.parseFloat(match[1]) : 1;
+}
+
+function parseIngredientsFromSchema(schema: Record<string, unknown>) {
+  return Array.isArray(schema.recipeIngredient)
+    ? schema.recipeIngredient.filter((entry): entry is string => typeof entry === "string" && cleanText(entry).length > 0)
+    : [];
+}
+
+function parseIngredientsFromText(text: string) {
+  const ingredientsBlockStart = text.indexOf("Ingredients");
+  const directionsBlockStart = text.indexOf("Directions");
+  if (ingredientsBlockStart < 0 || directionsBlockStart < 0 || directionsBlockStart <= ingredientsBlockStart) {
+    return [];
+  }
+
+  return text
+    .slice(ingredientsBlockStart + "Ingredients".length, directionsBlockStart)
+    .split("\n")
+    .map((line) => cleanText(line.replace(/^[*•-]\s*/, "")))
+    .filter((line) => /^\d/.test(line));
+}
+
+function parseIngredientLine(line: string) {
+  const normalizedLine = cleanText(
+    line
       .toLowerCase()
       .replace(/\([^)]*\)/g, " ")
       .replace(/,/g, " ")
-      .replace(/\bof\b/g, " "),
+      .replace(/\bpackages?\b/g, "serving")
+      .replace(/\bpounds?\b/g, "oz")
+      .replace(/\bounces?\b/g, "oz")
+      .replace(/\btablespoons?\b/g, "tbsp")
+      .replace(/\bcups?\b/g, "cup")
+      .replace(/\bpieces?\b/g, "piece"),
+  ).replace(/^(\d+)\s+(\d+)\/(\d+)\b/, (_, whole, numerator, denominator) =>
+    `${Number(whole) + Number(numerator) / Number(denominator)}`,
   );
 
-  const compacted = cleaned
-    .replace(/^(\d+)\s+(\d+)\/(\d+)\b/, (_, whole, numerator, denominator) =>
-      `${Number(whole) + Number(numerator) / Number(denominator)}`,
-    )
-    .replace(/\bpackage\b/g, "package")
-    .replace(/\bpounds?\b/g, "oz");
-
-  const match = compacted.match(
-    /^(?<amount>\d+(?:\.\d+)?|\d+\/\d+)?\s*(?<unit>g|gram|grams|oz|ounce|ounces|cup|cups|tbsp|tablespoon|tablespoons|piece|pieces|package)?\s*(?<food>.+)$/i,
+  const match = normalizedLine.match(
+    /^(?<amount>\d+(?:\.\d+)?|\d+\/\d+)?\s*(?<unit>g|oz|serving|cup|tbsp|piece)?\s*(?<food>.+)$/i,
   );
 
   if (!match?.groups?.food) {
@@ -202,162 +251,15 @@ function parseIngredient(ingredient: string) {
   };
 }
 
-function extractBetween(text: string, startMarker: string, endMarker: string) {
-  const startIndex = text.indexOf(startMarker);
-  if (startIndex < 0) {
-    return "";
-  }
+function estimateFromIngredients(ingredients: string[], servings: number) {
+  let calories = 0;
+  let protein = 0;
+  let carbs = 0;
+  let fat = 0;
+  let matched = 0;
 
-  const fromStart = text.slice(startIndex + startMarker.length);
-  const endIndex = fromStart.indexOf(endMarker);
-  return endIndex >= 0 ? fromStart.slice(0, endIndex) : fromStart;
-}
-
-function parseHtmlFallback(html: string, url: URL): ParsedRecipeContent | null {
-  const text = htmlToText(html);
-  if (!text) {
-    return null;
-  }
-
-  const titleMatch =
-    text.match(/#?\s*([^\n]+?)\n(?:\d+(?:\.\d+)?\n)?(?:\(\d+\)\n)?\d+\s+Reviews/i) ??
-    text.match(/([^\n]+)\nPrep Time:/i);
-  const title = cleanText(titleMatch?.[1] ?? url.hostname.replace(/^www\./, ""));
-
-  const servingsMatch =
-    text.match(/Servings:\s*(\d+(?:\.\d+)?)/i) ??
-    text.match(/Servings Per Recipe\s*(\d+(?:\.\d+)?)/i) ??
-    text.match(/yields\s*(\d+(?:\.\d+)?)\s*servings?/i);
-  const servings = servingsMatch ? Number.parseFloat(servingsMatch[1]) : undefined;
-
-  const ingredientsBlock = extractBetween(text, "Ingredients", "Directions");
-  const ingredients = ingredientsBlock
-    .split("\n")
-    .map((line) => cleanText(line.replace(/^[*•-]\s*/, "")))
-    .filter((line) => {
-      if (!line) {
-        return false;
-      }
-
-      if (/^(1\/2x|1x|2x|oops!|this recipe was developed)/i.test(line)) {
-        return false;
-      }
-
-      return /^\d/.test(line);
-    });
-
-  const nutritionFactsMatch = text.match(
-    /Nutrition Facts \(per serving\)\s*(\d+(?:\.\d+)?)\s*Calories\s*(\d+(?:\.\d+)?)g\s*Fat\s*(\d+(?:\.\d+)?)g\s*Carbs\s*(\d+(?:\.\d+)?)g\s*Protein/i,
-  );
-
-  const nutrition = nutritionFactsMatch
-    ? {
-        calories: Number.parseFloat(nutritionFactsMatch[1]),
-        fat: Number.parseFloat(nutritionFactsMatch[2]),
-        carbs: Number.parseFloat(nutritionFactsMatch[3]),
-        protein: Number.parseFloat(nutritionFactsMatch[4]),
-      }
-    : undefined;
-
-  if (!title && !ingredients.length && !nutrition) {
-    return null;
-  }
-
-  return {
-    title: title || url.hostname.replace(/^www\./, ""),
-    servings,
-    ingredients,
-    nutrition,
-  };
-}
-
-function extractJsonLdBlocks(html: string) {
-  const matches = html.match(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi) ?? [];
-  return matches
-    .map((block) => {
-      const contentMatch = block.match(/<script[^>]*>([\s\S]*?)<\/script>/i);
-      return contentMatch?.[1]?.trim() ?? "";
-    })
-    .filter(Boolean);
-}
-
-function flattenJsonLd(value: unknown): Array<Record<string, unknown>> {
-  if (!value) {
-    return [];
-  }
-
-  if (Array.isArray(value)) {
-    return value.flatMap((entry) => flattenJsonLd(entry));
-  }
-
-  if (typeof value === "object") {
-    const record = value as Record<string, unknown>;
-    const graphEntries = Array.isArray(record["@graph"]) ? flattenJsonLd(record["@graph"]) : [];
-    return [record, ...graphEntries];
-  }
-
-  return [];
-}
-
-function findRecipeSchema(html: string) {
-  const blocks = extractJsonLdBlocks(html);
-
-  for (const block of blocks) {
-    try {
-      const parsed = JSON.parse(block);
-      const entries = flattenJsonLd(parsed);
-      const recipe = entries.find((entry) => {
-        const type = entry["@type"];
-        if (typeof type === "string") {
-          return type.toLowerCase() === "recipe";
-        }
-
-        if (Array.isArray(type)) {
-          return type.some((item) => typeof item === "string" && item.toLowerCase() === "recipe");
-        }
-
-        return false;
-      });
-
-      if (recipe) {
-        return recipe;
-      }
-    } catch {
-      continue;
-    }
-  }
-
-  return null;
-}
-
-function getRecipeTitle(recipe: Record<string, unknown>, html: string, url: URL) {
-  const directName = typeof recipe.name === "string" ? cleanText(recipe.name) : "";
-  if (directName) {
-    return directName;
-  }
-
-  const titleMatch = html.match(/<title>([\s\S]*?)<\/title>/i);
-  const title = titleMatch?.[1] ? cleanText(titleMatch[1]) : "";
-  return title || url.hostname.replace(/^www\./, "");
-}
-
-function estimateFromIngredients(recipe: Record<string, unknown>) {
-  const ingredients = Array.isArray(recipe.recipeIngredient)
-    ? recipe.recipeIngredient.filter((entry): entry is string => typeof entry === "string" && cleanText(entry).length > 0)
-    : [];
-
-  const servings = parseYield(recipe.recipeYield);
-  const totals: MacroTotals = {
-    calories: 0,
-    protein: 0,
-    carbs: 0,
-    fat: 0,
-  };
-
-  let matchedIngredients = 0;
-
-  for (const ingredient of ingredients) {
-    const parsed = parseIngredient(ingredient);
+  for (const line of ingredients) {
+    const parsed = parseIngredientLine(line);
     if (!parsed) {
       continue;
     }
@@ -372,127 +274,26 @@ function estimateFromIngredients(recipe: Record<string, unknown>) {
       continue;
     }
 
-    matchedIngredients += 1;
-    totals.calories += food.macrosPerDefault.calories * ratio;
-    totals.protein += food.macrosPerDefault.protein * ratio;
-    totals.carbs += food.macrosPerDefault.carbs * ratio;
-    totals.fat += food.macrosPerDefault.fat * ratio;
+    matched += 1;
+    calories += food.macrosPerDefault.calories * ratio;
+    protein += food.macrosPerDefault.protein * ratio;
+    carbs += food.macrosPerDefault.carbs * ratio;
+    fat += food.macrosPerDefault.fat * ratio;
   }
 
-  if (!matchedIngredients) {
+  if (!matched) {
     return null;
   }
 
   return {
-    servingAmount: 1,
-    servingUnit: "serving" as const,
-    calories: roundCalories(totals.calories / servings),
-    protein: roundMacro(totals.protein / servings),
-    carbs: roundMacro(totals.carbs / servings),
-    fat: roundMacro(totals.fat / servings),
-    confidenceScore: Math.max(0.45, Math.min(0.84, matchedIngredients / Math.max(ingredients.length, 1))),
+    calories: roundCalories(calories / Math.max(servings, 1)),
+    protein: roundMacro(protein / Math.max(servings, 1)),
+    carbs: roundMacro(carbs / Math.max(servings, 1)),
+    fat: roundMacro(fat / Math.max(servings, 1)),
+    confidenceScore: Math.max(0.42, Math.min(0.8, matched / Math.max(ingredients.length, 1))),
     estimatedFrom: "ingredients" as const,
-    matchedIngredients,
+    matchedIngredients: matched,
     totalIngredients: ingredients.length,
-  };
-}
-
-function estimateFromParsedIngredients(parsedRecipe: ParsedRecipeContent) {
-  const ingredients = parsedRecipe.ingredients;
-  const servings = parsedRecipe.servings && parsedRecipe.servings > 0 ? parsedRecipe.servings : 1;
-  const totals: MacroTotals = {
-    calories: 0,
-    protein: 0,
-    carbs: 0,
-    fat: 0,
-  };
-
-  let matchedIngredients = 0;
-
-  for (const ingredient of ingredients) {
-    const parsed = parseIngredient(ingredient);
-    if (!parsed) {
-      continue;
-    }
-
-    const food = findFood(parsed.foodName);
-    if (!food) {
-      continue;
-    }
-
-    const ratio = convertRatio(parsed.amount, parsed.unit, food);
-    if (!ratio) {
-      continue;
-    }
-
-    matchedIngredients += 1;
-    totals.calories += food.macrosPerDefault.calories * ratio;
-    totals.protein += food.macrosPerDefault.protein * ratio;
-    totals.carbs += food.macrosPerDefault.carbs * ratio;
-    totals.fat += food.macrosPerDefault.fat * ratio;
-  }
-
-  if (!matchedIngredients) {
-    return null;
-  }
-
-  return {
-    servingAmount: 1,
-    servingUnit: "serving" as const,
-    calories: roundCalories(totals.calories / servings),
-    protein: roundMacro(totals.protein / servings),
-    carbs: roundMacro(totals.carbs / servings),
-    fat: roundMacro(totals.fat / servings),
-    confidenceScore: Math.max(0.42, Math.min(0.8, matchedIngredients / Math.max(ingredients.length, 1))),
-    estimatedFrom: "ingredients" as const,
-    matchedIngredients,
-    totalIngredients: ingredients.length,
-  };
-}
-
-function estimateFromParsedNutrition(parsedRecipe: ParsedRecipeContent) {
-  const nutrition = parsedRecipe.nutrition;
-  if (!nutrition) {
-    return null;
-  }
-
-  return {
-    servingAmount: 1,
-    servingUnit: "serving" as const,
-    calories: roundCalories(nutrition.calories ?? 0),
-    protein: roundMacro(nutrition.protein ?? 0),
-    carbs: roundMacro(nutrition.carbs ?? 0),
-    fat: roundMacro(nutrition.fat ?? 0),
-    confidenceScore: 0.92,
-    estimatedFrom: "schema-nutrition" as const,
-  };
-}
-
-function estimateFromSchemaNutrition(recipe: Record<string, unknown>) {
-  const nutrition = recipe.nutrition;
-  if (!nutrition || typeof nutrition !== "object") {
-    return null;
-  }
-
-  const record = nutrition as Record<string, unknown>;
-  const calories = toOptionalNumber(record.calories);
-  const protein = toOptionalNumber(record.proteinContent);
-  const carbs = toOptionalNumber(record.carbohydrateContent);
-  const fat = toOptionalNumber(record.fatContent);
-
-  if ([calories, protein, carbs, fat].every((value) => value == null)) {
-    return null;
-  }
-
-  return {
-    servingAmount: 1,
-    servingUnit: "serving" as const,
-    calories: roundCalories(calories ?? 0),
-    protein: roundMacro(protein ?? 0),
-    carbs: roundMacro(carbs ?? 0),
-    fat: roundMacro(fat ?? 0),
-    confidenceScore: 0.9,
-    estimatedFrom: "schema-nutrition" as const,
   };
 }
 
@@ -502,9 +303,8 @@ export default async function handler(req: RequestLike, res: ResponseLike) {
     return res.status(405).json({ error: "Method not allowed." });
   }
 
-  const urlInput = Array.isArray(req.query.url) ? req.query.url[0] : req.query.url;
-  const sourceUrl = String(urlInput ?? "").trim();
-
+  const input = Array.isArray(req.query.url) ? req.query.url[0] : req.query.url;
+  const sourceUrl = String(input ?? "").trim();
   if (!sourceUrl) {
     return res.status(400).json({ error: "A recipe URL is required." });
   }
@@ -516,50 +316,81 @@ export default async function handler(req: RequestLike, res: ResponseLike) {
     return res.status(400).json({ error: "Enter a valid recipe URL." });
   }
 
-  if (!/^https?:$/i.test(parsedUrl.protocol)) {
-    return res.status(400).json({ error: "Only http and https recipe URLs are supported." });
-  }
-
   try {
-    const response = await fetch(parsedUrl.toString(), {
+    const pageResponse = await fetch(parsedUrl.toString(), {
       headers: {
-        "User-Agent": "Vitalyx recipe importer/1.0",
+        "User-Agent": "Mozilla/5.0 (compatible; VitalyxRecipeBot/1.0)",
         Accept: "text/html,application/xhtml+xml",
       },
     });
 
-    if (!response.ok) {
-      throw new Error(`Recipe page request failed with status ${response.status}.`);
+    if (!pageResponse.ok) {
+      return res.status(500).json({ error: `Recipe page request failed with status ${pageResponse.status}.` });
     }
 
-    const html = await response.text();
-    const recipe = findRecipeSchema(html);
-    const parsedRecipe = recipe ? null : parseHtmlFallback(html, parsedUrl);
+    const html = await pageResponse.text();
+    const text = htmlToText(html);
+    const schema = extractJsonLd(html);
+    const title =
+      (schema && typeof schema.name === "string" ? cleanText(schema.name) : "") ||
+      cleanText(text.match(/^([^\n]+)/)?.[1] ?? "") ||
+      parsedUrl.hostname.replace(/^www\./, "");
+    const servings = schema && typeof schema.recipeYield === "string"
+      ? parseServings(schema.recipeYield)
+      : parseServings(text);
 
-    if (!recipe && !parsedRecipe) {
-      return res.status(404).json({ error: "No recipe data was found on that page." });
-    }
+    const schemaNutrition =
+      schema && schema.nutrition && typeof schema.nutrition === "object"
+        ? (() => {
+            const nutrition = schema.nutrition as Record<string, unknown>;
+            const calories = Number.parseFloat(String(nutrition.calories ?? "").replace(/[^\d.]/g, "")) || 0;
+            const fat = Number.parseFloat(String(nutrition.fatContent ?? "").replace(/[^\d.]/g, "")) || 0;
+            const carbs = Number.parseFloat(String(nutrition.carbohydrateContent ?? "").replace(/[^\d.]/g, "")) || 0;
+            const protein = Number.parseFloat(String(nutrition.proteinContent ?? "").replace(/[^\d.]/g, "")) || 0;
+            return calories || fat || carbs || protein
+              ? { calories: roundCalories(calories), fat: roundMacro(fat), carbs: roundMacro(carbs), protein: roundMacro(protein) }
+              : null;
+          })()
+        : null;
 
-    const title = recipe
-      ? getRecipeTitle(recipe, html, parsedUrl)
-      : parsedRecipe?.title ?? parsedUrl.hostname.replace(/^www\./, "");
-    const schemaEstimate = recipe
-      ? estimateFromSchemaNutrition(recipe)
-      : estimateFromParsedNutrition(parsedRecipe!);
-    const ingredientEstimate = recipe
-      ? estimateFromIngredients(recipe)
-      : estimateFromParsedIngredients(parsedRecipe!);
-    const estimate = schemaEstimate ?? ingredientEstimate;
+    const textNutrition = parseNutritionFromText(text);
+    const ingredients = schema ? parseIngredientsFromSchema(schema) : parseIngredientsFromText(text);
+    const ingredientEstimate = estimateFromIngredients(ingredients, servings);
 
-    if (!estimate) {
+    const nutrition = schemaNutrition ?? textNutrition;
+    if (!nutrition && !ingredientEstimate) {
       return res.status(422).json({ error: "Recipe data was found, but there was not enough nutrition or ingredient detail to estimate macros." });
+    }
+
+    if (nutrition) {
+      return res.status(200).json({
+        title,
+        sourceUrl: parsedUrl.toString(),
+        servingAmount: 1,
+        servingUnit: "serving",
+        calories: roundCalories(nutrition.calories ?? 0),
+        protein: roundMacro(nutrition.protein ?? 0),
+        carbs: roundMacro(nutrition.carbs ?? 0),
+        fat: roundMacro(nutrition.fat ?? 0),
+        confidenceScore: 0.92,
+        estimatedFrom: "schema-nutrition",
+      });
     }
 
     return res.status(200).json({
       title,
       sourceUrl: parsedUrl.toString(),
-      ...estimate,
-    } satisfies RecipeEstimateResponse);
+      servingAmount: 1,
+      servingUnit: "serving",
+      calories: ingredientEstimate!.calories,
+      protein: ingredientEstimate!.protein,
+      carbs: ingredientEstimate!.carbs,
+      fat: ingredientEstimate!.fat,
+      confidenceScore: ingredientEstimate!.confidenceScore,
+      estimatedFrom: "ingredients",
+      matchedIngredients: ingredientEstimate!.matchedIngredients,
+      totalIngredients: ingredientEstimate!.totalIngredients,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to estimate this recipe right now.";
     return res.status(500).json({ error: message });

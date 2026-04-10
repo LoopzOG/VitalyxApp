@@ -2,6 +2,7 @@ import {
   Barcode,
   Camera,
   ChevronDown,
+  Link2,
   Search,
   ScanLine,
   Trash2,
@@ -10,7 +11,7 @@ import { SectionCard } from "@/components/SectionCard";
 import type { PlannerMeal, PortionUnit } from "@/data";
 import type { NutritionEntry } from "@/lib/nutritionService";
 
-export type LoggingMethod = "barcode" | "search" | "photo";
+export type LoggingMethod = "barcode" | "search" | "photo" | "recipe";
 
 type NutritionLoggerProps = {
   dayLabel: string;
@@ -21,6 +22,8 @@ type NutritionLoggerProps = {
   onOpenBarcodeScanner: () => void;
   searchValue: string;
   onSearchValue: (value: string) => void;
+  recipeUrl: string;
+  onRecipeUrl: (value: string) => void;
   photoLabel: string;
   onRunLookup: () => void;
   onOpenPhotoPicker: () => void;
@@ -47,12 +50,14 @@ const units: PortionUnit[] = ["g", "oz", "serving", "cup", "tbsp", "piece"];
 function methodLabel(method: LoggingMethod) {
   if (method === "barcode") return "Scan Barcode";
   if (method === "search") return "Search Food";
+  if (method === "recipe") return "Recipe Link";
   return "Snap Photo";
 }
 
 function sourceLabel(source: NutritionEntry["source"]) {
   if (source === "openfoodfacts") return "Open Food Facts";
   if (source === "search") return "Search";
+  if (source === "recipe") return "Recipe estimate";
   return "Photo estimate";
 }
 
@@ -65,6 +70,8 @@ export function NutritionLogger({
   onOpenBarcodeScanner,
   searchValue,
   onSearchValue,
+  recipeUrl,
+  onRecipeUrl,
   photoLabel,
   onRunLookup,
   onOpenPhotoPicker,
@@ -98,10 +105,11 @@ export function NutritionLogger({
         }
       >
         <div className="space-y-4">
-          <div className="grid grid-cols-1 gap-2 min-[360px]:grid-cols-3">
+          <div className="grid grid-cols-1 gap-2 min-[360px]:grid-cols-2 min-[520px]:grid-cols-4">
             {([
               { key: "barcode", icon: Barcode, label: "Scan Barcode" },
               { key: "search", icon: Search, label: "Search Food" },
+              { key: "recipe", icon: Link2, label: "Recipe Link" },
               { key: "photo", icon: Camera, label: "Snap Photo" },
             ] as const).map(({ key, icon: Icon, label }) => (
               <button
@@ -186,6 +194,34 @@ export function NutritionLogger({
             </div>
           ) : null}
 
+          {loggingMethod === "recipe" ? (
+            <div className="space-y-3">
+              <label className="flex flex-col gap-2">
+                <span className="text-sm font-medium text-white">Recipe URL</span>
+                <input
+                  value={recipeUrl}
+                  onChange={(event) => onRecipeUrl(event.target.value)}
+                  className="rounded-[22px] border border-white/10 bg-white/[0.04] px-4 py-3 text-white outline-none"
+                  placeholder="https://example.com/my-protein-pasta"
+                  inputMode="url"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                />
+              </label>
+              <div className="rounded-[22px] border border-white/10 bg-white/[0.04] p-4 text-sm text-zinc-300">
+                Paste a recipe link and Vitalyx will estimate macros per serving from recipe schema or ingredients when available.
+              </div>
+              <button
+                type="button"
+                onClick={onRunLookup}
+                className="w-full rounded-[22px] bg-emerald-400 px-4 py-3 text-sm font-semibold text-zinc-950"
+              >
+                Estimate from recipe link
+              </button>
+            </div>
+          ) : null}
+
           <div className="rounded-[22px] border border-emerald-400/15 bg-emerald-400/10 p-4 text-sm text-emerald-100">
             {feedback ??
               "Detected nutrition is always editable before saving. Photo results are estimates and should be reviewed."}
@@ -217,6 +253,7 @@ export function NutritionLogger({
                         </span>
                       ) : null}
                     </div>
+                    {entry.note ? <p className="mt-2 text-xs leading-5 text-zinc-400">{entry.note}</p> : null}
                   </div>
 
                   <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2">

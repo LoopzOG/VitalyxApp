@@ -376,6 +376,7 @@ function App() {
   const [loggingMethod, setLoggingMethod] = useState<LoggingMethod>("search");
   const [barcodeValue, setBarcodeValue] = useState("");
   const [foodSearchQuery, setFoodSearchQuery] = useState("");
+  const [recipeUrl, setRecipeUrl] = useState("");
   const [photoLabel, setPhotoLabel] = useState("");
   const [isNutritionScannerOpen, setIsNutritionScannerOpen] = useState(false);
   const [pendingEntries, setPendingEntries] = useState<NutritionEntry[]>([]);
@@ -1481,6 +1482,13 @@ function App() {
             ? "Search matched a food profile. Review and edit if needed before saving."
             : "No food match found. Try wording like '2 eggs' or '6 oz chicken breast'.",
         );
+      } else if (loggingMethod === "recipe") {
+        result = await nutritionService.fromRecipeUrl(recipeUrl);
+        setNutritionFeedback(
+          result
+            ? "Recipe macros estimated per serving. Review and edit before saving."
+            : "Paste a recipe link to estimate macros per serving.",
+        );
       }
 
       setPendingEntries(result ? (Array.isArray(result) ? result : [result]) : []);
@@ -1602,6 +1610,7 @@ function App() {
     );
     setBarcodeValue("");
     setFoodSearchQuery("");
+    setRecipeUrl("");
     setPhotoLabel("");
   }
 
@@ -1847,6 +1856,8 @@ function App() {
           }}
           searchValue={foodSearchQuery}
           onSearchValue={setFoodSearchQuery}
+          recipeUrl={recipeUrl}
+          onRecipeUrl={setRecipeUrl}
           photoLabel={photoLabel}
           onRunLookup={runLookup}
           onOpenPhotoPicker={() => photoInputRef.current?.click()}

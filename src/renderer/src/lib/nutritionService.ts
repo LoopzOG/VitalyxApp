@@ -1,7 +1,7 @@
 import { foodCatalog, type FoodCatalogItem, type PortionUnit } from "@/data";
 import { getOpenFoodFactsNutrition } from "@/lib/openFoodFacts";
 
-export type NutritionSource = "openfoodfacts" | "search" | "photo";
+export type NutritionSource = "openfoodfacts" | "search" | "photo" | "recipe";
 
 export type NutritionEntry = {
   id: string;
@@ -15,6 +15,7 @@ export type NutritionEntry = {
   source: NutritionSource;
   confidenceScore: number;
   isEstimate?: boolean;
+  note?: string;
 };
 
 type ParsedSearch = {
@@ -239,6 +240,56 @@ export class NutritionService {
         return entryFromFood(food, label.amount, label.unit, "photo", 0.62, true);
       })
       .filter((entry): entry is NutritionEntry => Boolean(entry));
+  }
+
+  async fromRecipeUrl(url: string): Promise<NutritionEntry | null> {
+    const trimmedUrl = url.trim();
+    if (!trimmedUrl) {
+      return null;
+    }
+
+    const response = await fetch(`/api/recipes/estimate?url=${encodeURIComponent(trimmedUrl)}`);
+    if (!response.ok) {
+      const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+      throw new Error(payload?.error ?? "Unable to estimate recipe macros from that link.");
+    }
+
+    const payload = (await response.json()) as {
+      title: string;
+      sourceUrl: string;
+      servingAmount: number;
+      servingUnit: "serving";
+      calories: number;
+      protein: number;
+      carbs: number;
+      fat: number;
+      confidenceScore: number;
+      estimatedFrom: "schema-nutrition" | "ingredients";
+      matchedIngredients?: number;
+      totalIngredients?: number;
+    };
+
+    const estimatedFromLabel =
+      payload.estimatedFrom === "schema-nutrition"
+        ? "Recipe schema nutrition"
+        : payload.totalIngredients
+          ? `Estimated from ${payload.matchedIngredients ?? 0} of ${payload.totalIngredients} ingredients`
+          : "Estimated from recipe ingredients";
+
+    return {
+      id: uid(),
+      foodName: payload.title,
+      servingAmount: payload.servingAmount,
+      servingUnit: payload.servingUnit,
+      calories: roundCalories(payload.calories),
+      carbs: roundMacro(payload.carbs),
+      fat: roundMacro(payload.fat),
+      protein: roundMacro(payload.protein),
+      source: "recipe",
+      confidenceScore: payload.confidenceScore,
+      isEstimate: true,
+      note: `${estimatedFromLabel}. Source: ${payload.sourceUrl}`,
+    };
   }
 }
 

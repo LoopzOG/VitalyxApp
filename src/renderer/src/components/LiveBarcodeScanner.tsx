@@ -16,14 +16,62 @@ const supportedBarcodeFormats = [
   Html5QrcodeSupportedFormats.EAN_8,
 ];
 
+const barcodeLengthPattern = /^(8|12|13)$/;
+const detectionConfirmationWindowMs = 1500;
+const statusThrottleMs = 1200;
+const preferredZoomLevel = 2;
+
+function cleanBarcode(value: string) {
+  const cleaned = value.replace(/[^\d]/g, "").trim();
+  return barcodeLengthPattern.test(String(cleaned.length)) ? cleaned : "";
+}
+
+function formatCameraLabel(label: string, index: number) {
+  const trimmed = label.trim();
+  if (!trimmed) {
+    return `Camera ${index + 1}`;
+  }
+
+  return trimmed.length > 42 ? `${trimmed.slice(0, 39)}...` : trimmed;
+}
+
+function getPreferredCameraId(cameras: Array<{ id: string; label: string }>) {
+  return cameras.find((camera) => /back|rear|environment/i.test(camera.label))?.id ?? cameras[0]?.id ?? null;
+}
+
 export function LiveBarcodeScanner({ open, onDetected, onClose }: LiveBarcodeScannerProps) {
   const scannerId = useId().replace(/:/g, "");
   const scannerRef = useRef<Html5Qrcode | null>(null);
   const handlingDetectionRef = useRef(false);
+  const detectionStateRef = useRef<{ value: string; count: number; seenAt: number } | null>(null);
+  const lastStatusAtRef = useRef(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const hasAutoZoomedRef = useRef(false);
   const [status, setStatus] = useState("Point the camera at a UPC barcode.");
   const [isStarting, setIsStarting] = useState(false);
   const [isScanningPhoto, setIsScanningPhoto] = useState(false);
+  const [availableCameras, setAvailableCameras] = useState<Array<{ id: string; label: string }>>([]);
+  const [selectedCameraId, setSelectedCameraId] = useState<string | null>(null);
+  const [zoomState, setZoomState] = useState<{ min: number; max: number; step: number; value: number } | null>(null);
+  const [torchSupported, setTorchSupported] = useState(false);
+  const [torchEnabled, setTorchEnabled] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      return;
+    }
+
+    handlingDetectionRef.current = false;
+    detectionStateRef.current = null;
+    lastStatusAtRef.current = 0;
+    hasAutoZoomedRef.current = false;
+    setAvailableCameras([]);
+    setSelectedCameraId(null);
+    setZoomState(null);
+    setTorchSupported(false);
+    setTorchEnabled(false);
+    setStatus("Point the camera at a UPC barcode.");
+  }, [open]);
 
   useEffect(() => {
     if (!open || typeof document === "undefined") {
@@ -31,38 +79,48 @@ export function LiveBarcodeScanner({ open, onDetected, onClose }: LiveBarcodeSca
     }
 
     let cancelled = false;
-    const scanner = new Html5Qrcode(scannerId, {
-      useBarCodeDetectorIfSupported: true,
-      formatsToSupport: supportedBarcodeFormats,
-      verbose: false,
-    });
-    scannerRef.current = scanner;
-    handlingDetectionRef.current = false;
-
     async function startScanner() {
       setIsStarting(true);
       setStatus("Starting camera...");
 
       try {
         const cameras = await Html5Qrcode.getCameras().catch(() => []);
-        const preferredCamera =
-          cameras.find((camera) => /back|rear|environment/i.test(camera.label))?.id ??
-          cameras[0]?.id ??
-          { facingMode: { ideal: "environment" } };
+        if (cancelled) {
+          return;
+        }
+
+        setAvailableCameras(cameras);
+        const resolvedCameraId = selectedCameraId && cameras.some((camera) => camera.id === selectedCameraId)
+          ? selectedCameraId
+          : getPreferredCameraId(cameras);
+
+        if (!selectedCameraId && resolvedCameraId) {
+          setSelectedCameraId(resolvedCameraId);
+        }
+
+        const scanner = new Html5Qrcode(scannerId, {
+          useBarCodeDetectorIfSupported: true,
+          formatsToSupport: supportedBarcodeFormats,
+          verbose: false,
+        });
+        scannerRef.current = scanner;
+        handlingDetectionRef.current = false;
+        detectionStateRef.current = null;
 
         await scanner.start(
-          preferredCamera,
+          resolvedCameraId ?? { facingMode: { ideal: "environment" } },
           {
-            fps: 10,
+            fps: 12,
             qrbox: (viewfinderWidth, viewfinderHeight) => {
-              const width = Math.min(viewfinderWidth * 0.88, 360);
-              const height = Math.min(Math.max(viewfinderHeight * 0.24, 110), 170);
+              const width = Math.min(viewfinderWidth * 0.9, 380);
+              const height = Math.min(Math.max(viewfinderHeight * 0.2, 96), 148);
               return {
                 width: Math.floor(width),
                 height: Math.floor(height),
               };
             },
             disableFlip: true,
+            aspectRatio: 1.7777777778,
             videoConstraints: {
               facingMode: { ideal: "environment" },
               width: { ideal: 1920 },
@@ -70,12 +128,37 @@ export function LiveBarcodeScanner({ open, onDetected, onClose }: LiveBarcodeSca
             },
           },
           async (decodedText) => {
-            const cleaned = decodedText.replace(/[^\d]/g, "").trim();
+            const cleaned = cleanBarcode(decodedText);
             if (!cleaned || handlingDetectionRef.current) {
               return;
             }
 
+            const now = Date.now();
+            const currentDetection = detectionStateRef.current;
+            const nextCount =
+              currentDetection?.value === cleaned && now - currentDetection.seenAt <= detectionConfirmationWindowMs
+                ? currentDetection.count + 1
+                : 1;
+
+            detectionStateRef.current = {
+              value: cleaned,
+              count: nextCount,
+              seenAt: now,
+            };
+
+            if (nextCount < 2) {
+              setStatus(`Found ${cleaned}. Hold steady for one more read...`);
+              return;
+            }
+
             handlingDetectionRef.current = true;
+
+            try {
+              scanner.pause(true);
+            } catch {
+              // Best-effort pause before closing to avoid duplicate callbacks.
+            }
+
             setStatus(`Detected ${cleaned}. Closing scanner...`);
 
             if (!cancelled) {
@@ -88,13 +171,42 @@ export function LiveBarcodeScanner({ open, onDetected, onClose }: LiveBarcodeSca
           },
           () => {
             if (!cancelled && !handlingDetectionRef.current) {
-              setStatus("Looking for a UPC or EAN barcode...");
+              const now = Date.now();
+              if (now - lastStatusAtRef.current >= statusThrottleMs) {
+                lastStatusAtRef.current = now;
+                setStatus("Looking for a UPC or EAN barcode...");
+              }
             }
           },
         );
 
         if (!cancelled) {
-          setStatus("Scanner is live. Hold the barcode steady, fill the guide left to right, and move slightly closer if it does not catch.");
+          const capabilities = scanner.getRunningTrackCameraCapabilities();
+          const zoomFeature = capabilities.zoomFeature();
+          const torchFeature = capabilities.torchFeature();
+
+          setTorchSupported(torchFeature.isSupported());
+          setTorchEnabled(Boolean(torchFeature.value()));
+
+          if (zoomFeature.isSupported()) {
+            const min = zoomFeature.min();
+            const max = zoomFeature.max();
+            const step = zoomFeature.step() || 0.1;
+            const currentValue = zoomFeature.value() ?? min;
+            const autoZoom = Math.min(Math.max(preferredZoomLevel, min), max);
+
+            if (!hasAutoZoomedRef.current && autoZoom > currentValue + step / 2) {
+              await zoomFeature.apply(autoZoom).catch(() => undefined);
+              hasAutoZoomedRef.current = true;
+            }
+
+            const value = zoomFeature.value() ?? autoZoom ?? currentValue;
+            setZoomState({ min, max, step, value });
+          } else {
+            setZoomState(null);
+          }
+
+          setStatus("Scanner is live. Fill the guide left to right, hold still for a beat, and use zoom or flash if the code is small.");
         }
       } catch (error) {
         if (!cancelled) {
@@ -137,10 +249,49 @@ export function LiveBarcodeScanner({ open, onDetected, onClose }: LiveBarcodeSca
         }
       })();
     };
-  }, [open, onDetected, onClose, scannerId]);
+  }, [open, onDetected, onClose, scannerId, selectedCameraId]);
 
   if (!open) {
     return null;
+  }
+
+  async function handleZoomChange(nextValue: number) {
+    const scanner = scannerRef.current;
+    if (!scanner) {
+      return;
+    }
+
+    try {
+      const zoomFeature = scanner.getRunningTrackCameraCapabilities().zoomFeature();
+      if (!zoomFeature.isSupported()) {
+        return;
+      }
+
+      await zoomFeature.apply(nextValue);
+      setZoomState((current) => (current ? { ...current, value: nextValue } : current));
+    } catch {
+      setStatus("Zoom could not be adjusted on this camera.");
+    }
+  }
+
+  async function handleTorchToggle() {
+    const scanner = scannerRef.current;
+    if (!scanner) {
+      return;
+    }
+
+    try {
+      const torchFeature = scanner.getRunningTrackCameraCapabilities().torchFeature();
+      if (!torchFeature.isSupported()) {
+        return;
+      }
+
+      const nextValue = !torchEnabled;
+      await torchFeature.apply(nextValue);
+      setTorchEnabled(nextValue);
+    } catch {
+      setStatus("Flash could not be toggled on this camera.");
+    }
   }
 
   async function handlePhotoSelected(file: File) {
@@ -149,7 +300,7 @@ export function LiveBarcodeScanner({ open, onDetected, onClose }: LiveBarcodeSca
 
     try {
       const result = await scanBarcodeFromImage(file);
-      const cleaned = result?.replace(/[^\d]/g, "").trim();
+      const cleaned = result ? cleanBarcode(result) : "";
 
       if (!cleaned) {
         setStatus("No UPC was found in that photo. Try a sharper image with the barcode filling more of the frame.");
@@ -215,11 +366,73 @@ export function LiveBarcodeScanner({ open, onDetected, onClose }: LiveBarcodeSca
               <div>
                 <p>{status}</p>
                 <p className="mt-2 text-emerald-100/75">
-                  Use good lighting, keep the barcode horizontal inside the guide, and if live scanning misses it, try the photo fallback below.
+                  Use good lighting, keep the barcode horizontal inside the guide, and hold steady until the same code is confirmed twice.
                 </p>
               </div>
             </div>
           </div>
+
+          {availableCameras.length > 1 ? (
+            <label className="mt-4 block text-sm text-zinc-300">
+              <span className="mb-2 block text-xs uppercase tracking-[0.22em] text-zinc-500">Camera</span>
+              <select
+                value={selectedCameraId ?? ""}
+                onChange={(event) => {
+                  handlingDetectionRef.current = false;
+                  detectionStateRef.current = null;
+                  hasAutoZoomedRef.current = false;
+                  setZoomState(null);
+                  setTorchSupported(false);
+                  setTorchEnabled(false);
+                  setStatus("Switching camera...");
+                  setSelectedCameraId(event.target.value || null);
+                }}
+                className="w-full rounded-[18px] border border-white/10 bg-black/20 px-4 py-3 text-white outline-none"
+              >
+                {availableCameras.map((camera, index) => (
+                  <option key={camera.id} value={camera.id}>
+                    {formatCameraLabel(camera.label, index)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+
+          {zoomState || torchSupported ? (
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_auto]">
+              {zoomState ? (
+                <label className="block rounded-[20px] border border-white/8 bg-black/20 px-4 py-3 text-sm text-zinc-200">
+                  <div className="flex items-center justify-between gap-3">
+                    <span>Zoom</span>
+                    <span className="text-zinc-400">{zoomState.value.toFixed(1)}x</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={zoomState.min}
+                    max={zoomState.max}
+                    step={zoomState.step}
+                    value={zoomState.value}
+                    onChange={(event) => {
+                      void handleZoomChange(Number(event.target.value));
+                    }}
+                    className="mt-3 w-full accent-emerald-300"
+                  />
+                </label>
+              ) : null}
+
+              {torchSupported ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    void handleTorchToggle();
+                  }}
+                  className="rounded-[20px] border border-white/10 bg-black/20 px-4 py-3 text-sm font-medium text-zinc-100"
+                >
+                  {torchEnabled ? "Flash on" : "Flash off"}
+                </button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
 
         <div className="border-t border-white/8 px-5 py-4">

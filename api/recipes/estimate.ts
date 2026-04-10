@@ -212,6 +212,41 @@ function parseIngredientsFromText(text: string) {
     .filter((line) => /^\d/.test(line));
 }
 
+async function fetchRecipePage(url: string) {
+  const directResponse = await fetch(url, {
+    headers: {
+      "User-Agent": "Mozilla/5.0 (compatible; VitalyxRecipeBot/1.0)",
+      Accept: "text/html,application/xhtml+xml",
+    },
+  });
+
+  if (directResponse.ok) {
+    return {
+      body: await directResponse.text(),
+      fetchedVia: "direct" as const,
+    };
+  }
+
+  if (directResponse.status !== 403) {
+    throw new Error(`Recipe page request failed with status ${directResponse.status}.`);
+  }
+
+  const jinaResponse = await fetch(`https://r.jina.ai/${url}`, {
+    headers: {
+      Accept: "text/plain",
+    },
+  });
+
+  if (!jinaResponse.ok) {
+    throw new Error(`Recipe page request failed with status ${directResponse.status}, and reader fallback failed with status ${jinaResponse.status}.`);
+  }
+
+  return {
+    body: await jinaResponse.text(),
+    fetchedVia: "reader" as const,
+  };
+}
+
 function parseIngredientLine(line: string) {
   const normalizedLine = cleanText(
     line
@@ -317,18 +352,8 @@ export default async function handler(req: RequestLike, res: ResponseLike) {
   }
 
   try {
-    const pageResponse = await fetch(parsedUrl.toString(), {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; VitalyxRecipeBot/1.0)",
-        Accept: "text/html,application/xhtml+xml",
-      },
-    });
-
-    if (!pageResponse.ok) {
-      return res.status(500).json({ error: `Recipe page request failed with status ${pageResponse.status}.` });
-    }
-
-    const html = await pageResponse.text();
+    const page = await fetchRecipePage(parsedUrl.toString());
+    const html = page.body;
     const text = htmlToText(html);
     const schema = extractJsonLd(html);
     const title =
@@ -382,15 +407,17 @@ export default async function handler(req: RequestLike, res: ResponseLike) {
       sourceUrl: parsedUrl.toString(),
       servingAmount: 1,
       servingUnit: "serving",
-      calories: ingredientEstimate!.calories,
-      protein: ingredientEstimate!.protein,
-      carbs: ingredientEstimate!.carbs,
-      fat: ingredientEstimate!.fat,
-      confidenceScore: ingredientEstimate!.confidenceScore,
-      estimatedFrom: "ingredients",
-      matchedIngredients: ingredientEstimate!.matchedIngredients,
-      totalIngredients: ingredientEstimate!.totalIngredients,
-    });
+        calories: ingredientEstimate!.calories,
+        protein: ingredientEstimate!.protein,
+        carbs: ingredientEstimate!.carbs,
+        fat: ingredientEstimate!.fat,
+        confidenceScore: page.fetchedVia === "reader"
+          ? Math.max(0.4, ingredientEstimate!.confidenceScore - 0.06)
+          : ingredientEstimate!.confidenceScore,
+        estimatedFrom: "ingredients",
+        matchedIngredients: ingredientEstimate!.matchedIngredients,
+        totalIngredients: ingredientEstimate!.totalIngredients,
+      });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to estimate this recipe right now.";
     return res.status(500).json({ error: message });

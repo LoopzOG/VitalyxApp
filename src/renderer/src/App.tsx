@@ -931,6 +931,13 @@ function App() {
     );
   }
 
+  function replacePlanner(nextPlanner: UserAppData["planner"]) {
+    applyAppDataUpdate(
+      (base) => ({ ...base, planner: nextPlanner }),
+      { flushRemote: true },
+    );
+  }
+
   function updateGroceryLists(updater: (lists: GroceryList[]) => GroceryList[]) {
     applyAppDataUpdate((base) => {
       const nextLists = hydrateGroceryLists(updater(base.groceryLists), base.manualPriceRecords);
@@ -1550,31 +1557,49 @@ function App() {
       return;
     }
 
-    updatePlanner((current) =>
-      current.map((day, index) =>
-        index !== safeDayIndex
-          ? day
-          : editingMealId
-            ? {
-                ...day,
-                meals: day.meals.map((meal) =>
-                  (meal.id ?? meal.title) === editingMealId
-                    ? { ...nutritionEntryToMeal(pendingEntries[0], editingMealId), type: meal.type }
-                    : meal,
+    const entriesToSave = [...pendingEntries];
+    const activePlanner = normalizedPlanner.map((day) => ({
+      ...day,
+      meals: [...day.meals],
+    }));
+    const targetDay = activePlanner[safeDayIndex] ?? activePlanner[0];
+
+    if (!targetDay) {
+      setNutritionFeedback("Unable to save this food entry right now.");
+      return;
+    }
+
+    const nextPlanner = activePlanner.map((day, index) =>
+      index !== safeDayIndex
+        ? day
+        : editingMealId
+          ? {
+              ...day,
+              meals: day.meals.map((meal) =>
+                (meal.id ?? meal.title) === editingMealId
+                  ? { ...nutritionEntryToMeal(entriesToSave[0], editingMealId), type: meal.type }
+                  : meal,
+              ),
+            }
+          : {
+              ...day,
+              meals: [
+                ...day.meals,
+                ...entriesToSave.map((entry, entryIndex) =>
+                  nutritionEntryToMeal(entry, undefined, nextMealType(day.meals.length + entryIndex)),
                 ),
-              }
-            : {
-                ...day,
-                meals: [
-                  ...day.meals,
-                  ...pendingEntries.map((entry, entryIndex) =>
-                    nutritionEntryToMeal(entry, undefined, nextMealType(day.meals.length + entryIndex)),
-                  ),
-                ],
-              },
-      ),
+              ],
+            },
     );
-    resetDetectionState();
+
+    replacePlanner(nextPlanner);
+    setPendingEntries([]);
+    setEditingMealId(null);
+    setNutritionFeedback(
+      editingMealId
+        ? "Food entry updated."
+        : `Saved ${entriesToSave.length} food entr${entriesToSave.length === 1 ? "y" : "ies"} to ${targetDay.day}.`,
+    );
     setBarcodeValue("");
     setFoodSearchQuery("");
     setPhotoLabel("");

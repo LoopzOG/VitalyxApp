@@ -98,7 +98,7 @@ export function NutritionLogger({
         }
       >
         <div className="space-y-4">
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 gap-2 min-[360px]:grid-cols-3">
             {([
               { key: "barcode", icon: Barcode, label: "Scan Barcode" },
               { key: "search", icon: Search, label: "Search Food" },
@@ -219,7 +219,7 @@ export function NutritionLogger({
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3 min-[360px]:grid-cols-2">
                     <div className="rounded-[18px] border border-white/8 bg-black/20 px-3 py-3">
                       <p className="text-[11px] uppercase tracking-[0.18em] text-zinc-500">Calories</p>
                       <p className="mt-1 text-base font-semibold text-white">{entry.calories}</p>
@@ -280,7 +280,7 @@ export function NutritionLogger({
                   </label>
                 </div>
 
-                <div className="mt-4 grid grid-cols-2 gap-3">
+                <div className="mt-4 grid grid-cols-1 gap-3 min-[360px]:grid-cols-2">
                   <label className="flex flex-col gap-2">
                     <span className="text-sm font-medium text-white">Calories</span>
                     <input
@@ -321,7 +321,7 @@ export function NutritionLogger({
               </div>
             ))}
 
-            <div className="flex gap-3">
+            <div className="flex flex-col gap-3 min-[360px]:flex-row">
               <button
                 type="button"
                 onClick={onSaveEntries}
@@ -344,7 +344,7 @@ export function NutritionLogger({
       ) : null}
 
       <SectionCard eyebrow="Daily totals" title={`${dayLabel} macros`}>
-        <div className="mb-4 grid grid-cols-2 gap-3">
+        <div className="mb-4 grid grid-cols-1 gap-3 min-[360px]:grid-cols-2">
           <div className="rounded-[22px] border border-white/8 bg-white/[0.04] p-4">
             <p className="text-xs uppercase tracking-[0.22em] text-zinc-500">Calories</p>
             <p className="mt-2 text-xl font-semibold text-white">{totals.calories}</p>
@@ -370,7 +370,7 @@ export function NutritionLogger({
               return (
                 <div key={mealId} className="space-y-2">
                   {renderMealCard(meal)}
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 gap-2 min-[360px]:grid-cols-2">
                     <button
                       type="button"
                       onClick={() => onEditMeal(mealId)}

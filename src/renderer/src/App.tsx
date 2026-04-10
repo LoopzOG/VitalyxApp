@@ -460,6 +460,35 @@ function App() {
     });
   }
 
+  function persistLocalAppData(targetUser: SessionUser | null, nextData: UserAppData) {
+    if (!targetUser) {
+      return;
+    }
+
+    saveUserData(targetUser.id, nextData);
+    saveLocalAppDataBackup(targetUser.id, nextData);
+  }
+
+  function applyAppDataUpdate(
+    updater: (value: UserAppData) => UserAppData,
+    options?: { flushRemote?: boolean },
+  ) {
+    setAppData((current) => {
+      const base = current ?? latestAppDataRef.current ?? createFallbackUserData();
+      const nextData = updater(base);
+      latestAppDataRef.current = nextData;
+      persistLocalAppData(latestUserRef.current, nextData);
+
+      if (options?.flushRemote && latestUserRef.current && hasLoadedRemoteData.current) {
+        void saveUserAppData(latestUserRef.current.id, nextData).catch((error) => {
+          setAuthError(getErrorMessage(error, "Unable to save your data to the backend."));
+        });
+      }
+
+      return nextData;
+    });
+  }
+
   function requireSupabaseConfig() {
     if (hasSupabaseConfig) {
       return true;
@@ -896,23 +925,21 @@ function App() {
   }
 
   function updatePlanner(updater: (value: UserAppData["planner"]) => UserAppData["planner"]) {
-    setAppData((current) => {
-      const base = current ?? createFallbackUserData();
-      return { ...base, planner: updater(base.planner) };
-    });
+    applyAppDataUpdate(
+      (base) => ({ ...base, planner: updater(base.planner) }),
+      { flushRemote: true },
+    );
   }
 
   function updateGroceryLists(updater: (lists: GroceryList[]) => GroceryList[]) {
-    setAppData((current) => {
-      const base = current ?? createFallbackUserData();
+    applyAppDataUpdate((base) => {
       const nextLists = hydrateGroceryLists(updater(base.groceryLists), base.manualPriceRecords);
       return { ...base, groceryLists: nextLists };
     });
   }
 
   function updateManualPriceRecords(updater: (records: PriceRecord[]) => PriceRecord[]) {
-    setAppData((current) => {
-      const base = current ?? createFallbackUserData();
+    applyAppDataUpdate((base) => {
       const manualPriceRecords = updater(base.manualPriceRecords);
       return {
         ...base,
@@ -923,20 +950,14 @@ function App() {
   }
 
   function updateManualBarcodeEntries(updater: (entries: ManualBarcodeEntry[]) => ManualBarcodeEntry[]) {
-    setAppData((current) => {
-      const base = current ?? createFallbackUserData();
-      return {
-        ...base,
-        manualBarcodeEntries: updater(base.manualBarcodeEntries),
-      };
-    });
+    applyAppDataUpdate((base) => ({
+      ...base,
+      manualBarcodeEntries: updater(base.manualBarcodeEntries),
+    }));
   }
 
   function updateWorkoutLog(updater: (entries: WorkoutLogEntry[]) => WorkoutLogEntry[]) {
-    setAppData((current) => {
-      const base = current ?? createFallbackUserData();
-      return { ...base, workoutLog: updater(base.workoutLog) };
-    });
+    applyAppDataUpdate((base) => ({ ...base, workoutLog: updater(base.workoutLog) }));
   }
 
   function updateWorkoutPlans(updater: (entries: WorkoutPlanEntry[]) => WorkoutPlanEntry[]) {

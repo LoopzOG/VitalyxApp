@@ -1499,8 +1499,9 @@ function App() {
   }
 
   async function handleNutritionBarcodeDetected(detectedBarcode: string) {
-    setIsNutritionScannerOpen(false);
+    // The scanner calls onClose() before onDetected(), so isNutritionScannerOpen is already false here.
     setBarcodeValue(detectedBarcode);
+    setNutritionFeedback(`Detected ${detectedBarcode}. Looking up nutrition info...`);
     const result = await nutritionService.fromBarcode(detectedBarcode);
 
     if (!result) {

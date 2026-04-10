@@ -47,9 +47,16 @@ export function LiveBarcodeScanner({ open, onDetected, onClose }: LiveBarcodeSca
   const lastStatusAtRef = useRef(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const hasAutoZoomedRef = useRef(false);
+  const confirmationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Keep callback refs current on every render so the effect deps stay stable.
+  const onDetectedRef = useRef(onDetected);
+  onDetectedRef.current = onDetected;
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
   const [status, setStatus] = useState("Point the camera at a UPC barcode.");
   const [isStarting, setIsStarting] = useState(false);
   const [isScanningPhoto, setIsScanningPhoto] = useState(false);
+  const [isConfirmed, setIsConfirmed] = useState(false);
   const [availableCameras, setAvailableCameras] = useState<Array<{ id: string; label: string }>>([]);
   const [selectedCameraId, setSelectedCameraId] = useState<string | null>(null);
   const [zoomState, setZoomState] = useState<{ min: number; max: number; step: number; value: number } | null>(null);
@@ -61,10 +68,15 @@ export function LiveBarcodeScanner({ open, onDetected, onClose }: LiveBarcodeSca
       return;
     }
 
+    if (confirmationTimerRef.current) {
+      clearTimeout(confirmationTimerRef.current);
+      confirmationTimerRef.current = null;
+    }
     handlingDetectionRef.current = false;
     detectionStateRef.current = null;
     lastStatusAtRef.current = 0;
     hasAutoZoomedRef.current = false;
+    setIsConfirmed(false);
     setAvailableCameras([]);
     setSelectedCameraId(null);
     setZoomState(null);
@@ -159,15 +171,20 @@ export function LiveBarcodeScanner({ open, onDetected, onClose }: LiveBarcodeSca
               // Best-effort pause before closing to avoid duplicate callbacks.
             }
 
-            setStatus(`Detected ${cleaned}. Closing scanner...`);
+            setIsConfirmed(true);
+            setStatus(`Barcode confirmed — ${cleaned}`);
 
-            if (!cancelled) {
-              onClose();
-            }
-
-            Promise.resolve(onDetected(cleaned)).catch(() => {
+            // Fire the lookup immediately; close the modal after a short visual confirmation.
+            Promise.resolve(onDetectedRef.current(cleaned)).catch(() => {
               // The parent form handles lookup fallback and messaging after the scanner closes.
             });
+
+            confirmationTimerRef.current = setTimeout(() => {
+              if (!cancelled) {
+                onCloseRef.current();
+              }
+              confirmationTimerRef.current = null;
+            }, 280);
           },
           () => {
             if (!cancelled && !handlingDetectionRef.current) {
@@ -226,6 +243,11 @@ export function LiveBarcodeScanner({ open, onDetected, onClose }: LiveBarcodeSca
       cancelled = true;
       handlingDetectionRef.current = false;
 
+      if (confirmationTimerRef.current) {
+        clearTimeout(confirmationTimerRef.current);
+        confirmationTimerRef.current = null;
+      }
+
       const activeScanner = scannerRef.current;
       scannerRef.current = null;
 
@@ -249,7 +271,10 @@ export function LiveBarcodeScanner({ open, onDetected, onClose }: LiveBarcodeSca
         }
       })();
     };
-  }, [open, onDetected, onClose, scannerId, selectedCameraId]);
+    // onDetected and onClose are intentionally excluded — they're kept current via refs
+    // to prevent the camera from restarting on every parent render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, scannerId, selectedCameraId]);
 
   if (!open) {
     return null;
@@ -308,9 +333,10 @@ export function LiveBarcodeScanner({ open, onDetected, onClose }: LiveBarcodeSca
       }
 
       handlingDetectionRef.current = true;
-      setStatus(`Detected ${cleaned} from photo. Closing scanner...`);
-      onClose();
-      void Promise.resolve(onDetected(cleaned));
+      setIsConfirmed(true);
+      setStatus(`Barcode confirmed from photo — ${cleaned}`);
+      onCloseRef.current();
+      void Promise.resolve(onDetectedRef.current(cleaned));
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Unable to read barcode from photo.");
     } finally {
@@ -344,7 +370,6 @@ export function LiveBarcodeScanner({ open, onDetected, onClose }: LiveBarcodeSca
             ref={fileInputRef}
             type="file"
             accept="image/*"
-            capture="environment"
             className="hidden"
             onChange={(event) => {
               const file = event.target.files?.[0];
@@ -356,18 +381,40 @@ export function LiveBarcodeScanner({ open, onDetected, onClose }: LiveBarcodeSca
           />
           <div className="relative overflow-hidden rounded-[26px] border border-white/10 bg-black">
             <div id={scannerId} className="min-h-[360px] w-full bg-black" />
-            <div className="pointer-events-none absolute inset-x-6 top-1/2 h-28 -translate-y-1/2 rounded-[24px] border-2 border-emerald-300/70 shadow-[0_0_0_9999px_rgba(0,0,0,0.28)]" />
-            <div className="pointer-events-none absolute inset-x-10 top-1/2 -translate-y-1/2 border-t-2 border-emerald-300/80" />
+            <div
+              className={`pointer-events-none absolute inset-x-6 top-1/2 h-28 -translate-y-1/2 rounded-[24px] border-2 shadow-[0_0_0_9999px_rgba(0,0,0,0.28)] transition-colors duration-150 ${
+                isConfirmed ? "border-emerald-300" : "border-emerald-300/70"
+              }`}
+            />
+            <div
+              className={`pointer-events-none absolute inset-x-10 top-1/2 -translate-y-1/2 border-t-2 transition-colors duration-150 ${
+                isConfirmed ? "border-emerald-400" : "border-emerald-300/80"
+              }`}
+            />
           </div>
 
-          <div className="mt-4 rounded-[22px] border border-emerald-400/15 bg-emerald-400/10 p-4 text-sm text-emerald-100">
+          <div
+            className={`mt-4 rounded-[22px] border p-4 text-sm transition-colors duration-150 ${
+              isConfirmed
+                ? "border-emerald-400/30 bg-emerald-400/[0.14] text-emerald-100"
+                : "border-emerald-400/15 bg-emerald-400/10 text-emerald-100"
+            }`}
+          >
             <div className="flex items-start gap-3">
-              {isStarting ? <LoaderCircle size={18} className="mt-0.5 shrink-0 animate-spin" /> : <Camera size={18} className="mt-0.5 shrink-0" />}
+              {isStarting ? (
+                <LoaderCircle size={18} className="mt-0.5 shrink-0 animate-spin" />
+              ) : isConfirmed ? (
+                <ScanLine size={18} className="mt-0.5 shrink-0 text-emerald-300" />
+              ) : (
+                <Camera size={18} className="mt-0.5 shrink-0" />
+              )}
               <div>
                 <p>{status}</p>
-                <p className="mt-2 text-emerald-100/75">
-                  Use good lighting, keep the barcode horizontal inside the guide, and hold steady until the same code is confirmed twice.
-                </p>
+                {!isConfirmed ? (
+                  <p className="mt-2 text-emerald-100/75">
+                    Use good lighting, keep the barcode horizontal inside the guide, and hold steady until the same code is confirmed twice.
+                  </p>
+                ) : null}
               </div>
             </div>
           </div>

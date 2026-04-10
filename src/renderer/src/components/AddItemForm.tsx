@@ -74,7 +74,6 @@ export function AddItemForm({
   const [detectedPrices, setDetectedPrices] = useState<PriceRecord[]>([]);
   const [barcodeFeedback, setBarcodeFeedback] = useState<string | null>(null);
   const [isLookingUpBarcode, setIsLookingUpBarcode] = useState(false);
-  const [isScanningBarcode, setIsScanningBarcode] = useState(false);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
 
   async function runBarcodeLookup(nextBarcode = barcode) {
@@ -106,8 +105,8 @@ export function AddItemForm({
   }
 
   async function handleLiveBarcodeDetected(detectedBarcode: string) {
-    setIsScannerOpen(false);
-    setIsScanningBarcode(true);
+    // The scanner calls onClose() before onDetected(), so isScannerOpen is already false here.
+    setIsLookingUpBarcode(true);
     setBarcodeFeedback(`Detected ${detectedBarcode}. Looking up the product now...`);
     setBarcode(detectedBarcode);
     try {
@@ -129,7 +128,7 @@ export function AddItemForm({
         `Matched from ${result.sourceLabel}${result.latestPrices?.length ? ` with ${result.latestPrices.length} live price ${result.latestPrices.length === 1 ? "record" : "records"}` : ""}. Review quantity and store before saving.`,
       );
     } finally {
-      setIsScanningBarcode(false);
+      setIsLookingUpBarcode(false);
     }
   }
 
@@ -140,7 +139,6 @@ export function AddItemForm({
         onDetected={handleLiveBarcodeDetected}
         onClose={() => {
           setIsScannerOpen(false);
-          setIsScanningBarcode(false);
         }}
       />
       <div className="mb-4">
@@ -229,14 +227,20 @@ export function AddItemForm({
                   return;
                 }
 
-                setBarcodeFeedback("Opening the live UPC scanner...");
-                setIsScanningBarcode(true);
+                setBarcodeFeedback(null);
                 setIsScannerOpen(true);
               }}
-              className="flex w-full items-center justify-center gap-2 rounded-[20px] border border-dashed border-white/10 bg-black/20 px-4 py-3 text-sm text-zinc-300"
+              disabled={isLookingUpBarcode}
+              className="flex w-full items-center justify-center gap-2 rounded-[20px] border border-dashed border-white/10 bg-black/20 px-4 py-3 text-sm text-zinc-300 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <ScanLine size={16} />
-              {isScanningBarcode ? "Scanner live..." : canUseLiveScanner ? "Scan UPC Live" : "Unlock UPC Scanning"}
+              {isScannerOpen
+                ? "Scanner live..."
+                : isLookingUpBarcode
+                ? "Looking up barcode..."
+                : canUseLiveScanner
+                ? "Scan UPC Live"
+                : "Unlock UPC Scanning"}
             </button>
 
             {!canComparePrices ? (
@@ -246,9 +250,7 @@ export function AddItemForm({
             ) : null}
 
             <div className="rounded-[20px] border border-white/8 bg-black/20 p-3 text-sm text-zinc-300">
-          {isScanningBarcode
-                ? "Reading the UPC from your live camera..."
-                : isLookingUpBarcode
+              {isLookingUpBarcode
                 ? "Checking barcode..."
                 : barcodeFeedback ?? "Use a packaged food barcode to prefill the grocery item. Live scanning identifies the product, and Open Prices can seed store records when they exist."}
             </div>

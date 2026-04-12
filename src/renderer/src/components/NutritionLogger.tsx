@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   Barcode,
   Camera,
@@ -20,7 +21,7 @@ type NutritionLoggerProps = {
   searchValue: string;
   onSearchValue: (value: string) => void;
   photoLabel: string;
-  onRunLookup: () => void;
+  onRunLookup: () => Promise<void>;
   onOpenPhotoPicker: () => void;
   pendingEntries: NutritionEntry[];
   onEntryChange: (entryId: string, field: keyof NutritionEntry, value: string) => void;
@@ -77,6 +78,17 @@ export function NutritionLogger({
   onRemoveMeal,
   renderMealCard,
 }: NutritionLoggerProps) {
+  const [isLookingUp, setIsLookingUp] = useState(false);
+
+  async function handleLookup() {
+    setIsLookingUp(true);
+    try {
+      await onRunLookup();
+    } finally {
+      setIsLookingUp(false);
+    }
+  }
+
   return (
     <>
       <SectionCard
@@ -131,10 +143,11 @@ export function NutritionLogger({
               </label>
               <button
                 type="button"
-                onClick={onRunLookup}
-                className="w-full rounded-[22px] bg-emerald-400 px-4 py-3 text-sm font-semibold text-zinc-950"
+                onClick={handleLookup}
+                disabled={isLookingUp}
+                className="w-full rounded-[22px] bg-emerald-400 px-4 py-3 text-sm font-semibold text-zinc-950 disabled:opacity-60"
               >
-                Detect packaged food
+                {isLookingUp ? "Looking up…" : "Detect packaged food"}
               </button>
             </div>
           ) : null}

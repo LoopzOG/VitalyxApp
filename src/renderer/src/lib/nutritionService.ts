@@ -195,6 +195,13 @@ export class NutritionService {
       return null;
     }
 
+    // UPC-A (12), EAN-13 (13), EAN-8 (8), ITF-14 (14) are the valid food barcode lengths.
+    if (![8, 12, 13, 14].includes(cleanBarcode.length)) {
+      throw new Error(
+        `"${cleanBarcode}" doesn't look like a valid barcode — expected 8, 12, or 13 digits.`,
+      );
+    }
+
     const product = await getOpenFoodFactsNutrition(cleanBarcode);
     if (!product) {
       return null;

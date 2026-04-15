@@ -1,5 +1,8 @@
 import { foodCatalog, type FoodCatalogItem, type PortionUnit } from "@/data";
-import { getOpenFoodFactsNutrition } from "@/lib/openFoodFacts";
+import {
+  getOpenFoodFactsNutrition,
+  type OpenFoodFactsNutritionEntry,
+} from "@/lib/openFoodFacts";
 
 export type NutritionSource = "openfoodfacts" | "search" | "photo";
 
@@ -225,6 +228,27 @@ export class NutritionService {
     }
 
     return entryFromFood(food, parsed.amount, parsed.unit, "search", 0.88);
+  }
+
+  fromOpenFoodFactsEntry(product: OpenFoodFactsNutritionEntry): NutritionEntry {
+    const parsedServing = parseServingSize(product.servingSize);
+    const hasNutrition =
+      product.calories != null || product.carbs != null || product.fat != null || product.protein != null;
+    const displayName = product.brand ? `${product.brand} ${product.name}` : product.name;
+
+    return {
+      id: uid(),
+      foodName: displayName,
+      servingAmount: parsedServing?.amount ?? 1,
+      servingUnit: parsedServing?.unit ?? "serving",
+      calories: roundCalories(product.calories ?? 0),
+      carbs: roundMacro(product.carbs ?? 0),
+      fat: roundMacro(product.fat ?? 0),
+      protein: roundMacro(product.protein ?? 0),
+      source: "openfoodfacts",
+      confidenceScore: hasNutrition ? 0.94 : 0.7,
+      isEstimate: !hasNutrition,
+    };
   }
 
   async fromPhoto(image: File): Promise<NutritionEntry[]> {

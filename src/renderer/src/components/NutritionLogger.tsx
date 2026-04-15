@@ -6,8 +6,10 @@ import {
   Trash2,
 } from "lucide-react";
 import { SectionCard } from "@/components/SectionCard";
+import { MealLibrarySuggestions } from "@/components/MealLibrarySuggestions";
 import type { PlannerMeal, PortionUnit } from "@/data";
 import type { NutritionEntry } from "@/lib/nutritionService";
+import type { OpenFoodFactsNutritionEntry } from "@/lib/openFoodFacts";
 
 export type LoggingMethod = "barcode" | "search" | "photo";
 
@@ -38,6 +40,7 @@ type NutritionLoggerProps = {
   onEditMeal: (mealId: string) => void;
   onRemoveMeal: (mealId: string) => void;
   renderMealCard: (meal: PlannerMeal) => React.ReactNode;
+  onPickFromCatalog?: (entry: OpenFoodFactsNutritionEntry) => void;
 };
 
 const units: PortionUnit[] = ["g", "oz", "serving", "cup", "tbsp", "piece"];
@@ -76,6 +79,7 @@ export function NutritionLogger({
   onEditMeal,
   onRemoveMeal,
   renderMealCard,
+  onPickFromCatalog,
 }: NutritionLoggerProps) {
   return (
     <>
@@ -157,6 +161,12 @@ export function NutritionLogger({
               >
                 Detect from search
               </button>
+              {onPickFromCatalog ? (
+                <MealLibrarySuggestions
+                  query={searchValue}
+                  onPick={onPickFromCatalog}
+                />
+              ) : null}
             </div>
           ) : null}
 

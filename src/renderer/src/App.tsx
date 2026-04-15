@@ -891,6 +891,15 @@ function App() {
           onEditMeal={editMeal}
           onRemoveMeal={removeMeal}
           renderMealCard={(meal) => <MealCard {...meal} actionLabel="Edit" onAction={() => editMeal(meal.id ?? meal.title)} />}
+          onPickFromCatalog={(entry) => {
+            const created = nutritionService.fromOpenFoodFactsEntry(entry);
+            setPendingEntries([created]);
+            setFeedback(
+              entry.barcode
+                ? `Autofilled from ${entry.brand ? entry.brand + " — " : ""}Open Food Facts (UPC ${entry.barcode}). Edit before saving.`
+                : `Autofilled from Open Food Facts. Edit before saving.`,
+            );
+          }}
         />
       );
     }

@@ -2,6 +2,7 @@ import {
   Barcode,
   Camera,
   ChevronDown,
+  Loader2,
   Search,
   Trash2,
 } from "lucide-react";
@@ -41,6 +42,8 @@ type NutritionLoggerProps = {
   onRemoveMeal: (mealId: string) => void;
   renderMealCard: (meal: PlannerMeal) => React.ReactNode;
   onPickFromCatalog?: (entry: OpenFoodFactsNutritionEntry) => void;
+  isLookingUp?: boolean;
+  onOpenCamera?: () => void;
 };
 
 const units: PortionUnit[] = ["g", "oz", "serving", "cup", "tbsp", "piece"];
@@ -80,6 +83,8 @@ export function NutritionLogger({
   onRemoveMeal,
   renderMealCard,
   onPickFromCatalog,
+  isLookingUp = false,
+  onOpenCamera,
 }: NutritionLoggerProps) {
   return (
     <>
@@ -133,13 +138,27 @@ export function NutritionLogger({
                   placeholder="012345678905"
                 />
               </label>
-              <button
-                type="button"
-                onClick={onRunLookup}
-                className="w-full rounded-[22px] bg-emerald-400 px-4 py-3 text-sm font-semibold text-zinc-950"
-              >
-                Detect packaged food
-              </button>
+              <div className="grid grid-cols-[1fr_auto] gap-2">
+                <button
+                  type="button"
+                  onClick={onRunLookup}
+                  disabled={isLookingUp || !barcodeValue.trim()}
+                  className="flex items-center justify-center gap-2 rounded-[22px] bg-emerald-400 px-4 py-3 text-sm font-semibold text-zinc-950 disabled:opacity-60"
+                >
+                  {isLookingUp ? <Loader2 size={16} className="animate-spin" /> : null}
+                  {isLookingUp ? "Looking up…" : "Detect packaged food"}
+                </button>
+                {onOpenCamera ? (
+                  <button
+                    type="button"
+                    onClick={onOpenCamera}
+                    className="flex items-center justify-center gap-2 rounded-[22px] border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-zinc-200"
+                    title="Scan with camera"
+                  >
+                    <Camera size={18} />
+                  </button>
+                ) : null}
+              </div>
             </div>
           ) : null}
 
@@ -157,9 +176,11 @@ export function NutritionLogger({
               <button
                 type="button"
                 onClick={onRunLookup}
-                className="w-full rounded-[22px] bg-emerald-400 px-4 py-3 text-sm font-semibold text-zinc-950"
+                disabled={isLookingUp || !searchValue.trim()}
+                className="flex w-full items-center justify-center gap-2 rounded-[22px] bg-emerald-400 px-4 py-3 text-sm font-semibold text-zinc-950 disabled:opacity-60"
               >
-                Detect from search
+                {isLookingUp ? <Loader2 size={16} className="animate-spin" /> : null}
+                {isLookingUp ? "Detecting…" : "Detect from search"}
               </button>
               {onPickFromCatalog ? (
                 <MealLibrarySuggestions

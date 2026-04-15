@@ -204,10 +204,12 @@ export class NutritionService {
     }
 
     const parsedServing = parseServingSize(product.servingSize);
+    const hasNutrition =
+      product.calories != null || product.carbs != null || product.fat != null || product.protein != null;
 
     return {
       id: uid(),
-      foodName: product.name,
+      foodName: product.brand ? `${product.brand} ${product.name}` : product.name,
       servingAmount: parsedServing?.amount ?? 1,
       servingUnit: parsedServing?.unit ?? "serving",
       calories: roundCalories(product.calories ?? 0),
@@ -215,8 +217,19 @@ export class NutritionService {
       fat: roundMacro(product.fat ?? 0),
       protein: roundMacro(product.protein ?? 0),
       source: "openfoodfacts",
-      confidenceScore: product.calories != null || product.carbs != null || product.fat != null || product.protein != null ? 0.96 : 0.7,
+      confidenceScore: hasNutrition ? 0.96 : 0.55,
+      isEstimate: !hasNutrition,
     };
+  }
+
+  /** Distinct error type so callers can show a specific "found but no macros" message */
+  async fromBarcodeWithStatus(barcode: string): Promise<{ entry: NutritionEntry | null; found: boolean }> {
+    const cleanBarcode = barcode.replace(/[^\d]/g, "");
+    if (!cleanBarcode) return { entry: null, found: false };
+    const product = await getOpenFoodFactsNutrition(cleanBarcode);
+    if (!product) return { entry: null, found: false };
+    const entry = await this.fromBarcode(barcode);
+    return { entry, found: true };
   }
 
   async fromSearch(query: string): Promise<NutritionEntry | null> {

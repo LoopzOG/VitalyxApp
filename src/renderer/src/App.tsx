@@ -12,6 +12,7 @@ import {
   type PlannerMeal,
 } from "@/data";
 import { AddItemForm } from "@/components/AddItemForm";
+import { UpcScanner } from "@/components/UpcScanner";
 import { AuthScreen } from "@/components/AuthScreen";
 import { GroceryDashboardWidget } from "@/components/GroceryDashboardWidget";
 import { GroceryItemRow } from "@/components/GroceryItemRow";
@@ -255,6 +256,9 @@ function App() {
   const [pendingEntries, setPendingEntries] = useState<NutritionEntry[]>([]);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [editingMealId, setEditingMealId] = useState<string | null>(null);
+  const [isLookingUp, setIsLookingUp] = useState(false);
+  const [showUpcScanner, setShowUpcScanner] = useState(false);
+  const [showGroceryUpcScanner, setShowGroceryUpcScanner] = useState(false);
   const [selectedGroceryItemId, setSelectedGroceryItemId] = useState<string | null>(null);
   const [showStoreComparison, setShowStoreComparison] = useState(false);
   const [promoCodes, setPromoCodes] = useState<PromoCodeRecord[]>([]);
@@ -622,20 +626,26 @@ function App() {
 
   async function runLookup() {
     let result: NutritionEntry | NutritionEntry[] | null = null;
+    setIsLookingUp(true);
     try {
       if (loggingMethod === "barcode") {
-        result = await nutritionService.fromBarcode(barcodeValue);
-        setFeedback(
-          result
-            ? "Open Food Facts nutrition found. Double-check serving before saving."
-            : "No product was found for that barcode, or nutrition values were incomplete.",
-        );
+        const { entry, found } = await nutritionService.fromBarcodeWithStatus(barcodeValue);
+        result = entry;
+        if (!found) {
+          setFeedback("No product found for that barcode. Check the number and try again, or add it manually.");
+        } else if (!entry) {
+          setFeedback("Product found but nutrition data isn't available yet. You can fill in the macros manually.");
+        } else if (entry.isEstimate) {
+          setFeedback("Product found but nutrition is incomplete — shown as an estimate. Review before saving.");
+        } else {
+          setFeedback("Open Food Facts nutrition found. Double-check the serving size before saving.");
+        }
       } else if (loggingMethod === "search") {
         result = await nutritionService.fromSearch(foodSearchQuery);
         setFeedback(
           result
             ? "Search matched a food profile. Review and edit if needed before saving."
-            : "No food match found. Try wording like '2 eggs' or '6 oz chicken breast'.",
+            : "No food match found. Try wording like '2 eggs' or '6 oz chicken breast', or use the meal library below.",
         );
       }
 
@@ -643,6 +653,8 @@ function App() {
     } catch (error) {
       setPendingEntries([]);
       setFeedback(error instanceof Error ? error.message : "Nutrition lookup failed. Please try again.");
+    } finally {
+      setIsLookingUp(false);
     }
   }
 
@@ -890,6 +902,8 @@ function App() {
           meals={day.meals}
           onEditMeal={editMeal}
           onRemoveMeal={removeMeal}
+          isLookingUp={isLookingUp}
+          onOpenCamera={() => setShowUpcScanner(true)}
           renderMealCard={(meal) => <MealCard {...meal} actionLabel="Edit" onAction={() => editMeal(meal.id ?? meal.title)} />}
           onPickFromCatalog={(entry) => {
             const created = nutritionService.fromOpenFoodFactsEntry(entry);
@@ -1166,6 +1180,7 @@ function App() {
             onBarcodeLookup={(barcode) => groceryPriceService.lookupBarcode(barcode)}
             isPremiumSubscriber={user?.subscriptionTier === "premium"}
             onUpgradeToPremium={handleUpgradeToPremium}
+            onOpenCamera={() => setShowGroceryUpcScanner(true)}
           />
 
           {pricedGroceryList.items.length ? (
@@ -1458,7 +1473,33 @@ function App() {
           event.currentTarget.value = "";
         }}
       />
-      <MobileAppShell activeTab={activeTab} onNavigate={setActiveTab} title={meta.title} subtitle={meta.subtitle} searchValue={searchValue} onSearchChange={setSearchValue} user={user}>{renderScreen()}</MobileAppShell>
+      {showUpcScanner ? (
+        <UpcScanner
+          onDetected={(barcode) => {
+            setBarcodeValue(barcode);
+            setShowUpcScanner(false);
+            setLoggingMethod("barcode");
+          }}
+          onClose={() => setShowUpcScanner(false)}
+        />
+      ) : null}
+      {showGroceryUpcScanner ? (
+        <UpcScanner
+          onDetected={async (barcode) => {
+            setShowGroceryUpcScanner(false);
+            const result = await groceryPriceService.lookupBarcode(barcode).catch(() => null);
+            if (result) {
+              setFeedback(`Scanned: ${result.name}${result.brand ? ` (${result.brand})` : ""}`);
+            }
+          }}
+          onClose={() => setShowGroceryUpcScanner(false)}
+        />
+      ) : null}
+      <MobileAppShell activeTab={activeTab} onNavigate={setActiveTab} title={meta.title} subtitle={meta.subtitle} searchValue={searchValue} onSearchChange={setSearchValue} user={user}>
+        <div key={activeTab} className="tab-screen">
+          {renderScreen()}
+        </div>
+      </MobileAppShell>
     </>
   );
 }

@@ -22,11 +22,12 @@ type AddItemFormProps = {
   } | null>;
   isPremiumSubscriber: boolean;
   onUpgradeToPremium: () => void;
+  onOpenCamera?: () => void;
 };
 
 const units: GroceryUnit[] = ["lb", "dozen", "bag", "tub", "head", "piece", "cup", "oz", "serving"];
 
-export function AddItemForm({ onAdd, onBarcodeLookup, isPremiumSubscriber, onUpgradeToPremium }: AddItemFormProps) {
+export function AddItemForm({ onAdd, onBarcodeLookup, isPremiumSubscriber, onUpgradeToPremium, onOpenCamera }: AddItemFormProps) {
   const [entryMode, setEntryMode] = useState<"name" | "barcode">("name");
   const [name, setName] = useState("");
   const [quantity, setQuantity] = useState("1");
@@ -117,28 +118,30 @@ export function AddItemForm({ onAdd, onBarcodeLookup, isPremiumSubscriber, onUpg
               </button>
             </div>
 
-            <button
-              type="button"
-              onClick={() => {
-                if (!isPremiumSubscriber) {
-                  setBarcodeFeedback("UPC camera scanning is a premium feature. Manual barcode entry and lookup stay available on the free plan.");
-                  onUpgradeToPremium();
-                  return;
-                }
-
-                setBarcodeFeedback("Premium UPC scanning is unlocked. Camera capture can plug into this barcode field next, and manual entry still works now.");
-              }}
-              className="flex w-full items-center justify-center gap-2 rounded-[20px] border border-dashed border-white/10 bg-black/20 px-4 py-3 text-sm text-zinc-300"
-            >
-              <ScanLine size={16} />
-              {isPremiumSubscriber ? "Scan UPC (Premium)" : "Unlock UPC Scanning"}
-            </button>
-
-            {!isPremiumSubscriber ? (
-              <div className="rounded-[20px] border border-amber-300/20 bg-amber-300/10 p-3 text-sm text-amber-100">
-                Free plan: type or paste a barcode manually. Premium unlocks camera-based UPC scanning.
-              </div>
-            ) : null}
+            {onOpenCamera ? (
+              <button
+                type="button"
+                onClick={onOpenCamera}
+                className="flex w-full items-center justify-center gap-2 rounded-[20px] border border-emerald-400/30 bg-emerald-400/10 px-4 py-3 text-sm font-medium text-emerald-300"
+              >
+                <ScanLine size={16} />
+                Scan with camera
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  if (!isPremiumSubscriber) {
+                    setBarcodeFeedback("UPC camera scanning is a premium feature. Manual barcode entry and lookup stay available on the free plan.");
+                    onUpgradeToPremium();
+                  }
+                }}
+                className="flex w-full items-center justify-center gap-2 rounded-[20px] border border-dashed border-white/10 bg-black/20 px-4 py-3 text-sm text-zinc-300"
+              >
+                <ScanLine size={16} />
+                {isPremiumSubscriber ? "Scan UPC" : "Unlock UPC Scanning"}
+              </button>
+            )}
 
             <div className="rounded-[20px] border border-white/8 bg-black/20 p-3 text-sm text-zinc-300">
           {isLookingUpBarcode

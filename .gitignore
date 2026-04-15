@@ -4,3 +4,4 @@ out
 release
 electron-dev.log
 web-dev.log
+.vercel

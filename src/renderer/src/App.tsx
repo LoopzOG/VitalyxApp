@@ -12,6 +12,7 @@ import {
   type PlannerMeal,
 } from "@/data";
 import { AddItemForm } from "@/components/AddItemForm";
+import { BarcodeScannerModal } from "@/components/BarcodeScannerModal";
 import { AuthScreen } from "@/components/AuthScreen";
 import { GroceryDashboardWidget } from "@/components/GroceryDashboardWidget";
 import { GroceryItemRow } from "@/components/GroceryItemRow";
@@ -250,6 +251,8 @@ function App() {
   const [plannedWorkoutTime, setPlannedWorkoutTime] = useState("18:00");
   const [loggingMethod, setLoggingMethod] = useState<LoggingMethod>("search");
   const [barcodeValue, setBarcodeValue] = useState("");
+  const [showBarcodeScanner, setShowBarcodeScanner] = useState(false);
+  const barcodeScanCallbackRef = useRef<((code: string) => void) | null>(null);
   const [foodSearchQuery, setFoodSearchQuery] = useState("");
   const [photoLabel, setPhotoLabel] = useState("");
   const [pendingEntries, setPendingEntries] = useState<NutritionEntry[]>([]);
@@ -620,6 +623,17 @@ function App() {
     setEditingMealId(null);
   }
 
+  function openBarcodeScanner(onScanned: (code: string) => void) {
+    barcodeScanCallbackRef.current = onScanned;
+    setShowBarcodeScanner(true);
+  }
+
+  function handleBarcodeScanDetected(code: string) {
+    barcodeScanCallbackRef.current?.(code);
+    barcodeScanCallbackRef.current = null;
+    setShowBarcodeScanner(false);
+  }
+
   async function runLookup() {
     let result: NutritionEntry | NutritionEntry[] | null = null;
     try {
@@ -880,6 +894,7 @@ function App() {
           photoLabel={photoLabel}
           onRunLookup={runLookup}
           onOpenPhotoPicker={() => photoInputRef.current?.click()}
+          onOpenBarcodeScanner={() => openBarcodeScanner((code) => { setBarcodeValue(code); })}
           pendingEntries={pendingEntries}
           onEntryChange={handleEntryChange}
           onSaveEntries={saveDetectedEntries}
@@ -1157,6 +1172,7 @@ function App() {
             onBarcodeLookup={(barcode) => groceryPriceService.lookupBarcode(barcode)}
             isPremiumSubscriber={user?.subscriptionTier === "premium"}
             onUpgradeToPremium={handleUpgradeToPremium}
+            onOpenBarcodeScanner={openBarcodeScanner}
           />
 
           {pricedGroceryList.items.length ? (
@@ -1449,6 +1465,15 @@ function App() {
           event.currentTarget.value = "";
         }}
       />
+      {showBarcodeScanner ? (
+        <BarcodeScannerModal
+          onDetected={handleBarcodeScanDetected}
+          onClose={() => {
+            barcodeScanCallbackRef.current = null;
+            setShowBarcodeScanner(false);
+          }}
+        />
+      ) : null}
       <MobileAppShell activeTab={activeTab} onNavigate={setActiveTab} title={meta.title} subtitle={meta.subtitle} searchValue={searchValue} onSearchChange={setSearchValue} user={user}>{renderScreen()}</MobileAppShell>
     </>
   );

@@ -2,6 +2,7 @@ import {
   Barcode,
   Camera,
   ChevronDown,
+  ScanLine,
   Search,
   Trash2,
 } from "lucide-react";
@@ -22,6 +23,7 @@ type NutritionLoggerProps = {
   photoLabel: string;
   onRunLookup: () => void;
   onOpenPhotoPicker: () => void;
+  onOpenBarcodeScanner?: () => void;
   pendingEntries: NutritionEntry[];
   onEntryChange: (entryId: string, field: keyof NutritionEntry, value: string) => void;
   onSaveEntries: () => void;
@@ -65,6 +67,7 @@ export function NutritionLogger({
   photoLabel,
   onRunLookup,
   onOpenPhotoPicker,
+  onOpenBarcodeScanner,
   pendingEntries,
   onEntryChange,
   onSaveEntries,
@@ -121,13 +124,25 @@ export function NutritionLogger({
             <div className="space-y-3">
               <label className="flex flex-col gap-2">
                 <span className="text-sm font-medium text-white">Barcode</span>
-                <input
-                  value={barcodeValue}
-                  onChange={(event) => onBarcodeValue(event.target.value)}
-                  inputMode="numeric"
-                  className="rounded-[22px] border border-white/10 bg-white/[0.04] px-4 py-3 text-white outline-none"
-                  placeholder="012345678905"
-                />
+                <div className="flex gap-2">
+                  <input
+                    value={barcodeValue}
+                    onChange={(event) => onBarcodeValue(event.target.value)}
+                    inputMode="numeric"
+                    className="flex-1 rounded-[22px] border border-white/10 bg-white/[0.04] px-4 py-3 text-white outline-none"
+                    placeholder="012345678905"
+                  />
+                  {onOpenBarcodeScanner ? (
+                    <button
+                      type="button"
+                      onClick={onOpenBarcodeScanner}
+                      title="Scan with camera"
+                      className="flex items-center justify-center rounded-[22px] border border-emerald-400/30 bg-emerald-400/10 px-4 py-3 text-emerald-300"
+                    >
+                      <ScanLine size={18} />
+                    </button>
+                  ) : null}
+                </div>
               </label>
               <button
                 type="button"
